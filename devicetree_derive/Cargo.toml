@@ -1,0 +1,20 @@
+[package]
+name = "devicetree_derive"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.65"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+path = "lib.rs"
+proc-macro = true
+
+[dependencies]
+heck = "0.4.1"
+proc-macro2 = "1.0.54"
+quote = "1.0.26"
+syn = { version = "2.0.12", features = ["full"] }
+
+[features]

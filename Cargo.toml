@@ -1,0 +1,26 @@
+[workspace]
+members = ["devicetree_derive"]
+
+[package]
+name = "devicetree"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.65"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[example]]
+name = "borrowed_model"
+crate-type = ["lib"]
+required-features = ["derive"]
+
+[dependencies]
+ascii = { version = "1.1.0", default-features = false }
+devicetree_derive = { path = "devicetree_derive", optional = true }
+fallible-iterator = { version = "0.2.0", default-features = false }
+
+[features]
+alloc = []
+derive = ["devicetree_derive"]
+std = ["alloc"]
