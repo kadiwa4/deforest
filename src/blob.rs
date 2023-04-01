@@ -298,11 +298,8 @@ impl Devicetree {
 		let components = path.as_components()?;
 		let mut node = self.root_node()?;
 		for name in components {
-			if let Some(n) = node.children().find_by_name_loose(name)? {
-				node = n;
-			} else {
-				return Ok(None);
-			}
+			let Some(n) = node.get_child(name)? else { return Ok(None) };
+			node = n;
 		}
 
 		Ok(Some(node))
@@ -316,11 +313,8 @@ impl Devicetree {
 		let components = path.as_components()?;
 		let mut node = self.root_node()?;
 		for name in components {
-			if let Some(n) = node.children().find_by_name(|n| n == name)? {
-				node = n;
-			} else {
-				return Ok(None);
-			}
+			let Some(n) = node.get_child_strict(name)? else { return Ok(None) };
+			node = n;
 		}
 
 		Ok(Some(node))

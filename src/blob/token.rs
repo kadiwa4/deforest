@@ -17,21 +17,13 @@ pub(super) const TOKEN_SIZE: u32 = 4;
 /// Does not directly correspond to a 4-byte token from the blob.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
-pub enum Token<'dtb> {
+pub(super) enum Token<'dtb> {
 	BeginNode { name: &'dtb str },
 	EndNode,
 	Property(Property<'dtb>),
 }
 
 impl<'dtb> Token<'dtb> {
-	pub fn name(self) -> Result<&'dtb str> {
-		match self {
-			Self::BeginNode { name } => Ok(name),
-			Self::EndNode => panic!(),
-			Self::Property(prop) => prop.name(),
-		}
-	}
-
 	pub(super) fn to_item(self, dt: &'dtb Devicetree, cursor: Cursor) -> Option<Item<'dtb>> {
 		match self {
 			Self::BeginNode { name } => Some(Item::Child(Node {
@@ -97,10 +89,10 @@ impl Cursor {
 
 /// Do not use `cmp` or `eq` on cursor ranges from different devicetrees. Only
 /// `extend` it with nodes with valid node names from the same devicetree.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CursorRange<'dtb>(pub(super) Option<CursorRangeInner<'dtb>>);
 
-#[derive(Clone, Copy, Eq)]
+#[derive(Clone, Copy, Debug, Eq)]
 pub(super) struct CursorRangeInner<'dtb> {
 	depth: u32,
 	first_offset: u32,
@@ -163,8 +155,16 @@ impl<'dtb> Extend<Node<'dtb>> for CursorRange<'dtb> {
 			let cursor = node.start_cursor();
 			debug_assert_eq!(cursor.depth, inner.depth);
 			inner.first_offset = Ord::min(inner.first_offset, cursor.offset);
-			inner.last_offset = Ord::min(inner.last_offset, cursor.offset);
+			inner.last_offset = Ord::max(inner.last_offset, cursor.offset);
 		}
+	}
+}
+
+impl<'dtb> FromIterator<Node<'dtb>> for CursorRange<'dtb> {
+	fn from_iter<T: IntoIterator<Item = Node<'dtb>>>(iter: T) -> Self {
+		let mut this = Self::EMPTY;
+		this.extend(iter);
+		this
 	}
 }
 
@@ -196,7 +196,7 @@ impl Devicetree {
 		}
 	}
 
-	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
+	pub(super) fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
 		const PROP_HEADER_SIZE: usize = size_of::<PropHeader>();
 
 		#[repr(C)]

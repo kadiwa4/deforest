@@ -85,6 +85,16 @@ impl<'b> Path for [&'b str] {
 	}
 }
 
+impl<'b, const N: usize> Path for [&'b str; N] {
+	type ComponentsIter<'a> = iter::Copied<slice::Iter<'a, &'a str>>
+	where
+		Self: 'a;
+
+	fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
+		Ok(self.iter().copied())
+	}
+}
+
 impl Path for str {
 	type ComponentsIter<'a> = core::str::Split<'a, char>
 	where

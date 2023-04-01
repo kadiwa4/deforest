@@ -161,6 +161,42 @@ impl<'dtb> Node<'dtb> {
 	pub fn children(&self) -> NodeChildren<'dtb> {
 		NodeChildren(NodeItems::new(self, self.contents))
 	}
+
+	pub fn get_property(&self, name: &str) -> Result<Option<Property<'dtb>>> {
+		NodeProperties::new(self.dt, self.contents).find_by_name(|n| n == name)
+	}
+
+	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
+		let mut iter = NodeChildren(NodeItems::new(self, self.contents));
+		if util::split_node_name(name)?.1.is_some() {
+			iter.find(|n| Ok(n.name() == name))
+		} else if let Some((candidate, (_, candidate_addr))) = (&mut iter)
+			.map(|n| n.split_name().map(|split| (n, split)))
+			.find(|&(_, (n, _))| Ok(n == name))?
+		{
+			if candidate_addr.is_some() {
+				iter.find_by_name(|n| n == name)
+					.map(|n| n.or(Some(candidate)))
+			} else {
+				Ok(Some(candidate))
+			}
+		} else {
+			Ok(None)
+		}
+	}
+
+	pub fn get_child_strict(&self, name: &str) -> Result<Option<Node<'dtb>>> {
+		NodeChildren(NodeItems::new(self, self.contents)).find_by_name(|n| n == name)
+	}
+
+	pub fn get_children<'n>(
+		&self,
+		name: &'n str,
+	) -> fallible_iterator::Filter<NodeChildren<'dtb>, impl FnMut(&Node<'dtb>) -> Result<bool> + 'n>
+	{
+		NodeChildren(NodeItems::new(self, self.contents))
+			.filter(move |n| n.split_name().map(|(n, _)| n == name))
+	}
 }
 
 impl<'dtb> Display for Node<'dtb> {
@@ -351,22 +387,18 @@ impl<'dtb> NodeChildren<'dtb> {
 		self.find(|n| Ok(predicate(n.name())))
 	}
 
-	pub(super) fn find_by_name_loose(&mut self, name: &str) -> Result<Option<Node<'dtb>>> {
-		if util::split_node_name(name)?.1.is_some() {
-			self.find(|n| Ok(n.name() == name))
-		} else if let Some((candidate, (_, candidate_addr))) = self
-			.map(|n| n.split_name().map(|split| (n, split)))
-			.find(|&(_, (n, _))| Ok(n == name))?
-		{
-			if candidate_addr.is_some() {
-				self.find(|n| Ok(n.name() == name))
-					.map(|n| n.or(Some(candidate)))
-			} else {
-				Ok(Some(candidate))
-			}
-		} else {
-			Ok(None)
-		}
+	pub fn find_by_split_name(
+		&mut self,
+		mut predicate: impl FnMut(&str, Option<&str>) -> bool,
+	) -> Result<Option<Node<'dtb>>> {
+		self.find(|n| n.split_name().map(|(n, a)| predicate(n, a)))
+	}
+
+	pub fn filter_by_split_name(
+		&mut self,
+		mut predicate: impl FnMut(&str, Option<&str>) -> bool,
+	) -> fallible_iterator::Filter<&mut Self, impl FnMut(&Node<'dtb>) -> Result<bool>> {
+		self.filter(move |n| n.split_name().map(|(n, a)| predicate(n, a)))
 	}
 }
 
