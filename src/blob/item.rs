@@ -193,7 +193,7 @@ impl<'dtb> Node<'dtb> {
 	/// Finds a child node by (loosely-matching) name.
 	/// Try using [`Self::get_child_strict`] instead.
 	///
-	/// The input string needs not match the node name exactly; the unit-address
+	/// The input string needs not match the node name exactly; the unit address
 	/// (the part starting with an `@`) can be left out. If it is, the node name
 	/// has to be unambiguous.
 	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
@@ -217,7 +217,7 @@ impl<'dtb> Node<'dtb> {
 
 	/// Finds a child node by name.
 	///
-	/// The input string has to match the node name exactly; the unit-address
+	/// The input string has to match the node name exactly; the unit address
 	/// (the part starting with an `@`) cannot be left out.
 	pub fn get_child_strict(&self, name: &str) -> Result<Option<Node<'dtb>>> {
 		NodeChildren(NodeItems::new(self, self.contents)).find_by_name(|n| n == name)
@@ -225,7 +225,7 @@ impl<'dtb> Node<'dtb> {
 
 	/// Finds child nodes by (loosely-matching) name.
 	///
-	/// The input string should not contain a unit-address.
+	/// The input string should not contain a unit address.
 	pub fn get_children<'n>(
 		&self,
 		name: &'n str,
@@ -326,6 +326,8 @@ pub struct NodeItems<'dtb> {
 }
 
 impl<'dtb> NodeItems<'dtb> {
+	/// Creates a new iterator over the [`Item`]s contained in a node.
+	///
 	/// The cursor has to be inside the node.
 	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
 		debug_assert!(node.contents <= cursor && node.contents.depth <= cursor.depth);
@@ -334,6 +336,12 @@ impl<'dtb> NodeItems<'dtb> {
 			at_depth: node.contents.depth,
 			cursor,
 		}
+	}
+
+	/// The cursor has to be inside the node.
+	pub fn set_cursor(&mut self, cursor: Cursor) {
+		debug_assert!(self.at_depth <= cursor.depth);
+		self.cursor = cursor;
 	}
 
 	/// A cursor pointing to the next [`Token`] after this node. Most expensive
@@ -377,6 +385,8 @@ pub struct NodeProperties<'dtb> {
 }
 
 impl<'dtb> NodeProperties<'dtb> {
+	/// Creates an iterator over the [`Property`]s contained in a node.
+	///
 	/// The cursor has to be inside the node.
 	pub fn new(dt: &'dtb Devicetree, cursor: Cursor) -> Self {
 		Self { dt, cursor }
@@ -419,9 +429,16 @@ impl<'dtb> FallibleIterator for NodeProperties<'dtb> {
 pub struct NodeChildren<'dtb>(NodeItems<'dtb>);
 
 impl<'dtb> NodeChildren<'dtb> {
+	/// Creates an iterator over the child [`Node`]s contained in a node.
+	///
 	/// The cursor has to be inside the node.
 	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
 		Self(NodeItems::new(node, cursor))
+	}
+
+	/// The cursor has to be inside the node.
+	pub fn set_cursor(&mut self, cursor: Cursor) {
+		self.0.set_cursor(cursor);
 	}
 
 	/// A cursor pointing to the next [`Token`] after this node. Most expensive

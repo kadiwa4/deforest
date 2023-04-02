@@ -303,7 +303,7 @@ impl Devicetree {
 	/// Gets a node from the struct block by (loosely-matching) path.
 	/// Try using [`Self::get_node_strict`] instead.
 	///
-	/// The components need not match the node names exactly; the unit-address
+	/// The components need not match the node names exactly; the unit address
 	/// (the part starting with an `@`) can be left out. If it is, the node name
 	/// has to be unambiguous.
 	pub fn get_node<P: Path + ?Sized>(&self, path: &P) -> crate::Result<Option<Node<'_>>> {
@@ -319,7 +319,7 @@ impl Devicetree {
 
 	/// Gets a node from the struct block by path.
 	///
-	/// The components have to match the node names exactly; the unit-address
+	/// The components have to match the node names exactly; the unit address
 	/// (the part starting with an `@`) cannot be left out.
 	pub fn get_node_strict<P: Path + ?Sized>(&self, path: &P) -> crate::Result<Option<Node<'_>>> {
 		let components = path.as_components()?;

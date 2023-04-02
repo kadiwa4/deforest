@@ -1,4 +1,4 @@
-//! Parser for devicetree blobs compliant with version 0.4-rc1 of
+//! Parser for devicetree blobs compliant (hopefully) with version 0.4-rc1 of
 //! [the specification][spec].
 //!
 //! [spec]: https://www.devicetree.org/specifications

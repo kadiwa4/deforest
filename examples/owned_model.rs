@@ -22,6 +22,9 @@ struct RootNode {
 	chosen: Option<ChosenNode>,
 	#[dt_child]
 	cpus: Option<CpusNode>,
+
+	#[dt_children(rest)]
+	rest: Vec<Cursor>,
 }
 
 #[derive(Debug, Default, DeserializeNode)]
