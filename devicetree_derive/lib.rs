@@ -10,6 +10,17 @@ enum ItemKind {
 	Children,
 }
 
+/// Derive macro generating an impl of the trait `DeserializeNode`.
+///
+/// Attribute syntax: `#[dt_*]` or `#[dt_* = "<item name>"]`
+///
+/// - `#[dt_property]` (default) uses `DeserializeProperty`
+/// - `#[dt_child]` uses `DeserializeNode`
+/// - `#[dt_children]` uses `Default` and `Extend<A>` to collect items of type
+///   `A`, where `A: DeserializeNode`
+///
+/// `DeserializeNode::deserialize` is always used with an appropriate
+/// `NodeContext`.
 #[proc_macro_derive(DeserializeNode, attributes(dt_property, dt_child, dt_children))]
 pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let strct: ItemStruct = syn::parse(tokens).expect("invalid struct");
@@ -143,7 +154,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 						#child_arm
 					}
 				}
-				::devicetree::Result::Ok((this, items.cursor()))
+				::devicetree::Result::Ok((this, items._cursor_()))
 			}
 		}
 	}

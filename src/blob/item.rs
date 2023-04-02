@@ -342,6 +342,13 @@ impl<'dtb> NodeItems<'dtb> {
 		while self.next()?.is_some() {}
 		Ok(self.cursor)
 	}
+
+	// Hidden because the exact behavior of this iterator could change.
+	// Use `end_cursor` instead; this iterator is fused.
+	#[doc(hidden)]
+	pub fn _cursor_(self) -> Cursor {
+		self.cursor
+	}
 }
 
 impl<'dtb> FallibleIterator for NodeItems<'dtb> {
