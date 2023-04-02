@@ -57,8 +57,12 @@ pub struct Strings<'dtb> {
 }
 
 impl<'dtb> Strings<'dtb> {
+	/// Empty iterator. Cannot be obtained from deserializing a property.
 	pub const EMPTY: Self = Self { value: &[] };
 
+	/// Creates a new iterator over the strings contained in the value.
+	///
+	/// Returns `None` if the value does not end in a null byte.
 	pub fn new(value: &'dtb [u8]) -> Option<Self> {
 		matches!(value, [.., 0]).then_some(Self { value })
 	}
@@ -115,6 +119,7 @@ pub struct Reg<'dtb> {
 }
 
 impl<'dtb> Reg<'dtb> {
+	/// Creates a new iterator over the _(address, length)_ pairs of the value.
 	pub fn new(value: &'dtb [u32], address_cells: Cells, size_cells: Cells) -> Result<Self> {
 		if address_cells > 4 || size_cells > 4 {
 			return Err(Error::TooManyCells);
@@ -136,7 +141,7 @@ impl<'dtb> DeserializeProperty<'dtb> for Reg<'dtb> {
 		if cx.address_cells > 4 || cx.size_cells > 4 {
 			return Err(Error::TooManyCells);
 		}
-		let value = blob_prop.value_u32().ok_or(Error::UnsuitableProperty)?;
+		let value = <&[u32]>::deserialize(blob_prop, cx)?;
 		Self::new(value, cx.address_cells, cx.size_cells)
 	}
 }

@@ -2,10 +2,7 @@ use crate::{
 	blob::{Cursor, Devicetree, Error, Result, Token, TOKEN_SIZE},
 	util, DeserializeProperty, NodeContext,
 };
-use core::{
-	fmt::{self, Debug, Display, Formatter, Write},
-	slice,
-};
+use core::fmt::{self, Debug, Display, Formatter, Write};
 
 use fallible_iterator::FallibleIterator;
 
@@ -17,22 +14,22 @@ pub struct Property<'dtb> {
 }
 
 impl<'dtb> Property<'dtb> {
+	/// The property's name.
+	///
+	/// # Errors
+	/// Fails if the string is invalid.
 	pub fn name(self) -> Result<&'dtb str> {
 		util::get_c_str(self.name_blob)
 	}
 
+	/// The property's value.
 	pub fn value(self) -> &'dtb [u8] {
 		debug_assert_eq!(self.value.as_ptr() as usize % 4, 0);
 		self.value
 	}
 
-	pub(crate) fn value_u32(self) -> Option<&'dtb [u32]> {
-		let value = self.value();
-		(value.len() % 4 == 0).then(|| unsafe {
-			slice::from_raw_parts(value as *const _ as *const u32, value.len() / 4)
-		})
-	}
-
+	/// Parses the value. Equivalent to `DeserializeProperty` except that the
+	/// default [`NodeContext`] is used.
 	pub fn contextless_parse<T: DeserializeProperty<'dtb>>(self) -> crate::Result<T> {
 		T::deserialize(self, &NodeContext::default())
 	}
@@ -97,8 +94,8 @@ impl<'dtb> Display for Property<'dtb> {
 	}
 }
 
-/// A node of the tree structure in a [`Devicetree`] blob's struct block. It
-/// contains [`Property`]s and child nodes.
+/// A node of the tree structure in a [`Devicetree`] blob's struct block.
+/// It contains [`Property`]s and child nodes.
 #[derive(Clone, Debug)]
 pub struct Node<'dtb> {
 	pub(super) dt: &'dtb Devicetree,
@@ -107,10 +104,12 @@ pub struct Node<'dtb> {
 }
 
 impl<'dtb> Node<'dtb> {
+	/// The devicetree containing this node.
 	pub fn devicetree(&self) -> &'dtb Devicetree {
 		self.dt
 	}
 
+	/// The node's name.
 	pub fn name(&self) -> &'dtb str {
 		self.name
 	}
@@ -136,6 +135,7 @@ impl<'dtb> Node<'dtb> {
 		util::split_node_name(self.name)
 	}
 
+	/// Cursor pointing to this node's [`Token`].
 	pub fn start_cursor(&self) -> Cursor {
 		Cursor {
 			depth: self.contents.depth - 1,
@@ -145,30 +145,57 @@ impl<'dtb> Node<'dtb> {
 		}
 	}
 
+	/// Cursor pointing to the first [`Token`] inside this node.
 	pub fn content_cursor(&self) -> Cursor {
 		self.contents
 	}
 
+	/// Cursor pointing to the next [`Token`] after this node. Expensive to
+	/// determine.
 	pub fn end_cursor(&self) -> Result<Cursor> {
 		self.items().end_cursor()
 	}
 
+	/// Iterator over the [`Item`]s ([`Property`]s and child [`Node`]s)
+	/// contained in the node.
+	///
+	/// Fused (see [`core::iter::FusedIterator`]).
+	///
+	/// In compliant devicetrees, the properties always come before the child
+	/// nodes.
 	pub fn items(&self) -> NodeItems<'dtb> {
 		NodeItems::new(self, self.contents)
 	}
 
+	/// Iterator over the [`Property`]s contained in the node.
+	///
+	/// This is currently more efficient than filtering the [`NodeItems`]
+	/// manually.
 	pub fn properties(&self) -> NodeProperties<'dtb> {
 		NodeProperties::new(self.dt, self.contents)
 	}
 
+	/// An iterator over the child [`Node`]s contained in a node.
+	///
+	/// This is currently not any more efficient than filtering the
+	/// [`NodeItems`] manually.
+	///
+	/// Fused (see [`core::iter::FusedIterator`]).
 	pub fn children(&self) -> NodeChildren<'dtb> {
 		NodeChildren(NodeItems::new(self, self.contents))
 	}
 
+	/// Finds a contained property by name.
 	pub fn get_property(&self, name: &str) -> Result<Option<Property<'dtb>>> {
 		NodeProperties::new(self.dt, self.contents).find_by_name(|n| n == name)
 	}
 
+	/// Finds a child node by (loosely-matching) name.
+	/// Try using [`Self::get_child_strict`] instead.
+	///
+	/// The input string needs not match the node name exactly; the unit-address
+	/// (the part starting with an `@`) can be left out. If it is, the node name
+	/// has to be unambiguous.
 	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
 		let mut iter = NodeChildren(NodeItems::new(self, self.contents));
 		if util::split_node_name(name)?.1.is_some() {
@@ -188,10 +215,17 @@ impl<'dtb> Node<'dtb> {
 		}
 	}
 
+	/// Finds a child node by name.
+	///
+	/// The input string has to match the node name exactly; the unit-address
+	/// (the part starting with an `@`) cannot be left out.
 	pub fn get_child_strict(&self, name: &str) -> Result<Option<Node<'dtb>>> {
 		NodeChildren(NodeItems::new(self, self.contents)).find_by_name(|n| n == name)
 	}
 
+	/// Finds child nodes by (loosely-matching) name.
+	///
+	/// The input string should not contain a unit-address.
 	pub fn get_children<'n>(
 		&self,
 		name: &'n str,
@@ -265,6 +299,10 @@ pub enum Item<'dtb> {
 }
 
 impl<'dtb> Item<'dtb> {
+	/// The property's name.
+	///
+	/// # Errors
+	/// Fails if this is a property and the string is invalid.
 	pub fn name(self) -> Result<&'dtb str> {
 		match self {
 			Self::Property(prop) => prop.name(),
@@ -298,6 +336,8 @@ impl<'dtb> NodeItems<'dtb> {
 		}
 	}
 
+	/// A cursor pointing to the next [`Token`] after this node. Most expensive
+	/// to determine if this iterator has not been advanced very much.
 	pub fn end_cursor(mut self) -> Result<Cursor> {
 		while self.next()?.is_some() {}
 		Ok(self.cursor)
@@ -335,10 +375,12 @@ impl<'dtb> NodeProperties<'dtb> {
 		Self { dt, cursor }
 	}
 
+	/// Cursor pointing to the next [`Token`].
 	pub fn cursor(&self) -> Cursor {
 		self.cursor
 	}
 
+	/// Finds a contained property by name.
 	pub fn find_by_name(
 		&mut self,
 		mut predicate: impl FnMut(&str) -> bool,
@@ -375,10 +417,13 @@ impl<'dtb> NodeChildren<'dtb> {
 		Self(NodeItems::new(node, cursor))
 	}
 
+	/// A cursor pointing to the next [`Token`] after this node. Most expensive
+	/// to determine if this iterator has not been advanced very much.
 	pub fn end_cursor(self) -> Result<Cursor> {
 		self.0.end_cursor()
 	}
 
+	/// Searches for a node whose name satisfies the predicate.
 	pub fn find_by_name(
 		&mut self,
 		mut predicate: impl FnMut(&str) -> bool,
@@ -386,6 +431,7 @@ impl<'dtb> NodeChildren<'dtb> {
 		self.find(|n| Ok(predicate(n.name())))
 	}
 
+	/// Searches for a node whose split name satisfies the predicate.
 	pub fn find_by_split_name(
 		&mut self,
 		mut predicate: impl FnMut(&str, Option<&str>) -> bool,
@@ -393,6 +439,8 @@ impl<'dtb> NodeChildren<'dtb> {
 		self.find(|n| n.split_name().map(|(n, a)| predicate(n, a)))
 	}
 
+	/// Creates an iterator which uses a closure to determine if a node should
+	/// be yielded. The predicate takes the node's split name as input.
 	pub fn filter_by_split_name(
 		&mut self,
 		mut predicate: impl FnMut(&str, Option<&str>) -> bool,

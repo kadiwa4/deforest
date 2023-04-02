@@ -58,7 +58,10 @@ impl std::error::Error for Error {}
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
+/// Number of 4-byte cells. This crate has an upper limit of 4 cells, but that
+/// is not part of the spec.
 pub type Cells = u8;
+/// Numerical identifier for a node.
 pub type Phandle = u32;
 
 /// Absolute path of an item.
@@ -67,6 +70,7 @@ pub type Phandle = u32;
 /// A leading slash is required for a string path, other than that the path can
 /// be empty.
 pub trait Path {
+	/// Iterator over the components of the path.
 	type ComponentsIter<'a>: DoubleEndedIterator<Item = &'a str>
 	where
 		Self: 'a;
@@ -117,7 +121,9 @@ impl Path for str {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct NodeContext {
+	/// `#address-cells` property of the parent node.
 	pub address_cells: Cells,
+	/// `#size-cells` property of the parent node.
 	pub size_cells: Cells,
 }
 
@@ -130,7 +136,9 @@ impl Default for NodeContext {
 	}
 }
 
+/// Types that can be parsed from a devicetree property.
 pub trait DeserializeProperty<'dtb>: Sized {
+	/// Parses a devicetree property into this type.
 	fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self>;
 }
 
@@ -197,7 +205,12 @@ impl<'dtb, T: DeserializeProperty<'dtb>> DeserializeProperty<'dtb> for Option<T>
 	}
 }
 
+/// Types that can be parsed from a devicetree node.
 pub trait DeserializeNode<'dtb>: Sized {
+	/// Parses a devicetree node into this type.
+	///
+	/// The second return value is a cursor pointing to the next token after the
+	/// node.
 	fn deserialize(blob_node: &Node<'dtb>, cx: &NodeContext) -> Result<(Self, Cursor)>;
 }
 
@@ -444,10 +457,13 @@ pub mod util {
 pub mod fallible_iterator {
 	pub use fallible_iterator::*;
 
+	/// Creates a new iterator where each iteration calls the provided closure.
 	pub fn from_fn<T, E, F: FnMut() -> Result<Option<T>, E>>(f: F) -> FromFn<F> {
 		FromFn(f)
 	}
 
+	/// Iterator where each iteration calls the provided closure. Obtained from
+	/// [`from_fn`].
 	pub struct FromFn<F>(F);
 
 	impl<T, E, F: FnMut() -> Result<Option<T>, E>> FallibleIterator for FromFn<F> {

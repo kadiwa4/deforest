@@ -25,6 +25,7 @@ pub enum Token<'dtb> {
 }
 
 impl<'dtb> Token<'dtb> {
+	/// Returns an item if this is a `BeginNode` or `Property` token.
 	pub fn into_item(self) -> Option<Item<'dtb>> {
 		match self {
 			Self::BeginNode(node) => Some(Item::Child(node)),
@@ -39,7 +40,7 @@ impl<'dtb> Token<'dtb> {
 /// Can be obtained from [`Node::content_cursor`] and advanced using
 /// [`Devicetree::next_token`].
 ///
-/// Do not use `cmp` or `eq` on cursors from different devicetrees.
+/// Do not compare cursors from different devicetrees.
 ///
 /// [`NodeChildren`]: super::NodeChildren
 #[derive(Clone, Copy, Debug, Eq)]
@@ -84,8 +85,14 @@ impl Cursor {
 	}
 }
 
-/// Do not use compare cursor ranges from different devicetrees. Only
+/// A range of nodes, represented by cursors to them.
+///
+///  Do not use compare cursor ranges from different devicetrees. Only
 /// `extend` a range with nodes with valid node names from the same devicetree.
+/// Empty ranges do not belong to any devicetree.
+///
+/// Can be used with [`Devicetree::nodes_in_range`] or
+/// [`Devicetree::deserialize_in_range`] or by advancing cursors manually.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CursorRange<'dtb>(pub(super) Option<CursorRangeInner<'dtb>>);
 
@@ -116,8 +123,10 @@ impl Hash for CursorRangeInner<'_> {
 }
 
 impl<'dtb> CursorRange<'dtb> {
+	/// Default empty range.
 	pub const EMPTY: Self = Self(None);
 
+	/// Creates a new range spanning a single node.
 	pub fn new_single(node: Node<'dtb>) -> Result<Self> {
 		let cursor = node.start_cursor();
 		Ok(Self(Some(CursorRangeInner {
@@ -128,10 +137,12 @@ impl<'dtb> CursorRange<'dtb> {
 		})))
 	}
 
+	/// Determines if this range spans only a single node.
 	pub fn is_single(&self) -> bool {
 		self.0.map_or(false, |i| i.first_offset == i.last_offset)
 	}
 
+	/// Cursor pointing to the first node's [`Token`].
 	pub fn first(&self) -> Option<Cursor> {
 		let inner = self.0?;
 		Some(Cursor {
@@ -140,6 +151,7 @@ impl<'dtb> CursorRange<'dtb> {
 		})
 	}
 
+	/// Cursor pointing to the last node's [`Token`].
 	pub fn last(&self) -> Option<Cursor> {
 		let inner = self.0?;
 		Some(Cursor {
@@ -196,6 +208,7 @@ impl Devicetree {
 		}
 	}
 
+	/// Returns the token pointed to by the cursor and advance the cursor.
 	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
 		const PROP_HEADER_SIZE: usize = size_of::<PropHeader>();
 
@@ -288,10 +301,13 @@ impl Devicetree {
 		Ok(Some(unsafe { mem::transmute(token) }))
 	}
 
+	/// Iterator over the [`Node`]s in the range.
 	pub fn nodes_in_range<'dtb>(&'dtb self, range: CursorRange<'dtb>) -> NodesInRange<'dtb> {
 		NodesInRange { dt: self, range }
 	}
 
+	/// Iterator over the [`Node`]s in the range, with each node being parsed
+	/// into type `T`.
 	pub fn deserialize_in_range<'dtb, T: DeserializeNode<'dtb>>(
 		&'dtb self,
 		range: CursorRange<'dtb>,
@@ -305,6 +321,8 @@ impl Devicetree {
 	}
 }
 
+/// Iterator over the [`Node`]s in a range.
+/// Obtained from [`Devicetree::nodes_in_range`].
 #[derive(Clone, Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct NodesInRange<'dtb> {
@@ -313,6 +331,10 @@ pub struct NodesInRange<'dtb> {
 }
 
 impl<'dtb> NodesInRange<'dtb> {
+	/// Advances the iterator and passes the next node to the given closure.
+	///
+	/// The closure's second return value is a cursor pointing to the next token
+	/// after the node.
 	pub fn walk_next<T>(
 		&mut self,
 		mut f: impl FnMut(Node<'dtb>) -> crate::Result<(T, Cursor)>,
@@ -350,11 +372,14 @@ impl<'dtb> NodesInRange<'dtb> {
 		}
 	}
 
+	/// The range of nodes that has not been visited yet.
 	pub fn remaining_range(&self) -> CursorRange<'dtb> {
 		self.range
 	}
 }
 
+/// Iterator over the [`Node`]s in a range, with each node being parsed into
+/// type `T`.
 #[derive(Clone, Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct DeserializeInRange<'dtb, T> {

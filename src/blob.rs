@@ -260,14 +260,17 @@ impl Devicetree {
 		u32::from_be(self.header().boot_cpuid_phys)
 	}
 
+	/// The blob data as a `u8` slice.
 	pub fn blob_u8(&self) -> &[u8] {
 		unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of_val(self)) }
 	}
+	/// The blob data as a `u32` slice.
 
 	pub fn blob_u32(&self) -> &[u32] {
 		unsafe { slice::from_raw_parts(self as *const _ as *const u32, size_of_val(self) / 4) }
 	}
 
+	/// The blob data as a `u64` slice.
 	pub fn blob(&self) -> &[u64] {
 		&self.blob
 	}
@@ -297,7 +300,8 @@ impl Devicetree {
 		util::slice_get_with_len(self.blob_u8(), offset, len).ok_or(Error::BlockOutOfBounds)
 	}
 
-	/// Gets a node from the struct block by path.
+	/// Gets a node from the struct block by (loosely-matching) path.
+	/// Try using [`Self::get_node_strict`] instead.
 	///
 	/// The components need not match the node names exactly; the unit-address
 	/// (the part starting with an `@`) can be left out. If it is, the node name
