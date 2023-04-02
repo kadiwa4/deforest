@@ -102,15 +102,14 @@ impl Path for str {
 
 	fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
 		let mut components = self.split('/');
-		if components.next() == Some("") {
-			if self.len() == 1 {
-				// for the root node, the iterator should be empty
-				components.next();
-			}
-			Ok(components)
-		} else {
-			Err(Error::InvalidPath)
+		if components.next() != Some("") {
+			return Err(Error::InvalidPath);
 		}
+		if self.len() == 1 {
+			// for the root node, the iterator should be empty
+			components.next();
+		}
+		Ok(components)
 	}
 }
 
@@ -186,14 +185,9 @@ impl<'dtb> DeserializeProperty<'dtb> for u64 {
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb str {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
-		if let [rest @ .., 0] = blob_prop.value() {
-			match AsciiStr::from_ascii(rest) {
-				Ok(s) => Ok(s.as_str()),
-				Err(_) => Err(Error::UnsuitableProperty),
-			}
-		} else {
-			Err(Error::UnsuitableProperty)
-		}
+		let [rest @ .., 0] = blob_prop.value() else { return Err(Error::UnsuitableProperty) };
+		let bytes = AsciiStr::from_ascii(rest).map_err(|_| Error::UnsuitableProperty)?;
+		Ok(bytes.as_str())
 	}
 }
 
@@ -215,7 +209,7 @@ impl<'dtb> DeserializeNode<'dtb> for Node<'dtb> {
 
 impl<'dtb> DeserializeNode<'dtb> for Cursor {
 	fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
-		Ok((blob_node.content_cursor(), blob_node.end_cursor()?))
+		Ok((blob_node.start_cursor(), blob_node.end_cursor()?))
 	}
 }
 
@@ -234,6 +228,16 @@ mod alloc_impl {
 	use ::fallible_iterator::FallibleIterator;
 
 	impl Path for [String] {
+		type ComponentsIter<'a> = iter::Map<slice::Iter<'a, String>, fn(&String) -> &str>
+		where
+			Self: 'a;
+
+		fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
+			Ok(self.iter().map(String::as_str))
+		}
+	}
+
+	impl<const N: usize> Path for [String; N] {
 		type ComponentsIter<'a> = iter::Map<slice::Iter<'a, String>, fn(&String) -> &str>
 		where
 			Self: 'a;
@@ -281,7 +285,7 @@ mod alloc_impl {
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<&'dtb str> {
 		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
-			prop_value::Strings::deserialize(blob_prop, cx).and_then(collect_vec)
+			collect_vec(prop_value::Strings::deserialize(blob_prop, cx)?)
 		}
 	}
 
@@ -320,14 +324,14 @@ mod alloc_impl {
 	impl<'dtb> DeserializeNode<'dtb> for Vec<Item<'dtb>> {
 		fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
-			Ok((collect_vec(&mut items)?, items.cursor()))
+			Ok((collect_vec(&mut items)?, items.cursor))
 		}
 	}
 
 	impl<'dtb> DeserializeNode<'dtb> for Box<[Item<'dtb>]> {
 		fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
-			Ok((collect_vec(&mut items)?.into_boxed_slice(), items.cursor()))
+			Ok((collect_vec(&mut items)?.into_boxed_slice(), items.cursor))
 		}
 	}
 
@@ -379,6 +383,9 @@ pub mod util {
 	/// no bigger than 16 bytes. The 16-byte limit is not part of the spec.
 	/// Defaults to 0 if zero cells are to be parsed.
 	pub fn parse_cells(bytes: &mut &[u32], cells: Cells) -> Option<u128> {
+		if cells > 4 {
+			return None;
+		}
 		let mut value: u128 = 0;
 		for &byte in bytes.get(..cells as usize)? {
 			value = (value << 0x20) | u32::from_be(byte) as u128;
@@ -388,6 +395,9 @@ pub mod util {
 	}
 
 	pub(crate) fn parse_cells_back(bytes: &mut &[u32], cells: Cells) -> Option<u128> {
+		if cells > 4 {
+			return None;
+		}
 		let idx = usize::checked_sub(bytes.len(), cells as usize)?;
 		let mut value: u128 = 0;
 		for &byte in &bytes[idx..] {
@@ -419,10 +429,8 @@ pub mod util {
 		let blob = iter.next().unwrap();
 		iter.next().ok_or(blob::Error::InvalidString)?;
 
-		match AsciiStr::from_ascii(blob) {
-			Ok(s) => Ok(s.as_str()),
-			Err(_) => Err(blob::Error::InvalidString),
-		}
+		let bytes = AsciiStr::from_ascii(blob).map_err(|_| blob::Error::InvalidString)?;
+		Ok(bytes.as_str())
 	}
 
 	/// Same as `<[_]>::get` with a range except that it takes a length, not an end

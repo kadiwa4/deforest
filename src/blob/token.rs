@@ -4,6 +4,7 @@ use crate::{
 };
 use core::{
 	cmp::Ordering,
+	hash::{Hash, Hasher},
 	marker::PhantomData,
 	mem::{self, size_of},
 };
@@ -15,22 +16,18 @@ pub(super) const TOKEN_SIZE: u32 = 4;
 /// A parsed token from the [`Devicetree`] blob's struct block.
 ///
 /// Does not directly correspond to a 4-byte token from the blob.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 #[non_exhaustive]
-pub(super) enum Token<'dtb> {
-	BeginNode { name: &'dtb str },
+pub enum Token<'dtb> {
+	BeginNode(Node<'dtb>),
 	EndNode,
 	Property(Property<'dtb>),
 }
 
 impl<'dtb> Token<'dtb> {
-	pub(super) fn to_item(self, dt: &'dtb Devicetree, cursor: Cursor) -> Option<Item<'dtb>> {
+	pub fn into_item(self) -> Option<Item<'dtb>> {
 		match self {
-			Self::BeginNode { name } => Some(Item::Child(Node {
-				dt,
-				name,
-				contents: cursor,
-			})),
+			Self::BeginNode(node) => Some(Item::Child(node)),
 			Self::EndNode => None,
 			Self::Property(prop) => Some(Item::Property(prop)),
 		}
@@ -40,7 +37,7 @@ impl<'dtb> Token<'dtb> {
 /// A position inside the [`Devicetree`] blob's struct block.
 ///
 /// Can be obtained from [`Node::content_cursor`] and advanced using
-/// [`Devicetree::next_token`] or iterators like [`NodeChildren`].
+/// [`Devicetree::next_token`].
 ///
 /// Do not use `cmp` or `eq` on cursors from different devicetrees.
 ///
@@ -87,9 +84,9 @@ impl Cursor {
 	}
 }
 
-/// Do not use `cmp` or `eq` on cursor ranges from different devicetrees. Only
-/// `extend` it with nodes with valid node names from the same devicetree.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Do not use compare cursor ranges from different devicetrees. Only
+/// `extend` a range with nodes with valid node names from the same devicetree.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CursorRange<'dtb>(pub(super) Option<CursorRangeInner<'dtb>>);
 
 #[derive(Clone, Copy, Debug, Eq)]
@@ -108,6 +105,13 @@ impl PartialEq for CursorRangeInner<'_> {
 			debug_assert_eq!(self.filter_name, other.filter_name);
 		}
 		ret
+	}
+}
+
+impl Hash for CursorRangeInner<'_> {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.first_offset.hash(state);
+		self.last_offset.hash(state);
 	}
 }
 
@@ -187,16 +191,12 @@ impl Devicetree {
 			offset: u32::from_be(self.header().off_dt_struct),
 		};
 		match self.next_token(&mut cursor)? {
-			Some(Token::BeginNode { name }) if name.is_empty() => Ok(Node {
-				dt: self,
-				name,
-				contents: cursor,
-			}),
+			Some(Token::BeginNode(node)) if node.name.is_empty() => Ok(node),
 			_ => Err(Error::InvalidRootNode),
 		}
 	}
 
-	pub(super) fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
+	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
 		const PROP_HEADER_SIZE: usize = size_of::<PropHeader>();
 
 		#[repr(C)]
@@ -207,7 +207,7 @@ impl Devicetree {
 
 		let blob = self.blob_u8();
 		loop {
-			let Some(token) = self.next_raw(cursor)? else { return Err(Error::UnexpectedEnd) };
+			let token = self.next_raw(cursor)?.ok_or(Error::UnexpectedEnd)?;
 			let offset = cursor.offset as usize;
 
 			let token = match token {
@@ -217,7 +217,11 @@ impl Devicetree {
 
 					cursor.increase_offset(name.len() + 1, blob)?;
 					cursor.depth += 1;
-					Token::BeginNode { name }
+					Token::BeginNode(Node {
+						dt: self,
+						name,
+						contents: *cursor,
+					})
 				}
 				RawToken::EndNode => {
 					let depth =
@@ -262,7 +266,8 @@ impl Devicetree {
 
 	fn next_raw(&self, cursor: &mut Cursor) -> Result<Option<RawToken>> {
 		let offset = cursor.offset as usize;
-		let Some(token) = util::slice_get_with_len(self.blob_u8(), offset, TOKEN_SIZE as usize) else {
+		let Some(token) = util::slice_get_with_len(self.blob_u8(), offset, TOKEN_SIZE as usize)
+		else {
 			return Ok(None)
 		};
 		let token = unsafe { *(token as *const _ as *const u32) };
@@ -300,6 +305,8 @@ impl Devicetree {
 	}
 }
 
+#[derive(Clone, Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct NodesInRange<'dtb> {
 	dt: &'dtb Devicetree,
 	range: CursorRange<'dtb>,
@@ -320,17 +327,10 @@ impl<'dtb> NodesInRange<'dtb> {
 				self.range = CursorRange::EMPTY;
 			}
 			let node = loop {
-				let Some(token) = self.dt.next_token(&mut cursor)? else { return Ok(None) };
-				match token {
-					Token::BeginNode { name } => {
-						break Node {
-							dt: self.dt,
-							contents: cursor,
-							name,
-						};
-					}
-					Token::EndNode => return Ok(None),
-					Token::Property(_) => (),
+				match self.dt.next_token(&mut cursor)? {
+					Some(Token::BeginNode(node)) => break node,
+					None | Some(Token::EndNode) => return Ok(None),
+					Some(Token::Property(_)) => (),
 				}
 			};
 
@@ -349,11 +349,17 @@ impl<'dtb> NodesInRange<'dtb> {
 			}
 		}
 	}
+
+	pub fn remaining_range(&self) -> CursorRange<'dtb> {
+		self.range
+	}
 }
 
+#[derive(Clone, Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct DeserializeInRange<'dtb, T> {
-	nodes: NodesInRange<'dtb>,
-	cx: NodeContext,
+	pub nodes: NodesInRange<'dtb>,
+	pub cx: NodeContext,
 	_marker: PhantomData<fn() -> T>,
 }
 

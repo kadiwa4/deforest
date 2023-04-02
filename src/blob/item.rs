@@ -1,5 +1,5 @@
 use crate::{
-	blob::{Cursor, Devicetree, Error, Result, Token},
+	blob::{Cursor, Devicetree, Error, Result, Token, TOKEN_SIZE},
 	util, DeserializeProperty, NodeContext,
 };
 use core::{
@@ -49,10 +49,11 @@ impl<'dtb> Debug for Property<'dtb> {
 
 impl<'dtb> Display for Property<'dtb> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let _ = f.write_str(self.name().map_err(|_| fmt::Error)?);
+		f.write_str(self.name().map_err(|_| fmt::Error)?)?;
 		if let [ref rest @ .., last_byte] = *self.value {
-			let _ = f.write_str(" = ");
+			f.write_str(" = ")?;
 			let is_strings = last_byte == 0 && {
+				// an all-zero value shouldn't be displayed as a bunch of empty strings
 				let mut prev_was_printing_char = false;
 				rest.iter().all(|&b| {
 					match b {
@@ -64,32 +65,32 @@ impl<'dtb> Display for Property<'dtb> {
 				}) && prev_was_printing_char
 			};
 			if is_strings {
-				let _ = f.write_char('"');
+				f.write_char('"')?;
 				for &b in rest {
 					if b == 0 {
-						let _ = f.write_str("\", \"");
+						f.write_str("\", \"")?;
 					} else {
-						let _ = f.write_char(b as char);
+						f.write_char(b as char)?;
 					};
 				}
-				let _ = f.write_char('"');
+				f.write_char('"')?;
 			} else {
-				let _ = f.write_char('[');
+				f.write_char('[')?;
 				let len = self.value.len();
 				if len % 4 == 0 {
 					for b in rest.chunks_exact(4) {
 						let (a, b, c, d) = (b[0], b[1], b[2], b[3]);
-						let _ = write!(f, "{a:02x}{b:02x}{c:02x}{d:02x} ");
+						write!(f, "{a:02x}{b:02x}{c:02x}{d:02x} ")?;
 					}
 					let (a, b, c) = (rest[len - 4], rest[len - 3], rest[len - 2]);
 					// last byte is written below
-					let _ = write!(f, "{a:02x}{b:02x}{c:02x}");
+					write!(f, "{a:02x}{b:02x}{c:02x}")?;
 				} else {
 					for &b in rest {
-						let _ = write!(f, "{b:02x} ");
+						write!(f, "{b:02x} ")?;
 					}
 				}
-				let _ = write!(f, "{last_byte:02x}]");
+				write!(f, "{last_byte:02x}]")?;
 			}
 		}
 		f.write_char(';')
@@ -114,7 +115,8 @@ impl<'dtb> Node<'dtb> {
 		self.name
 	}
 
-	pub fn display_name(&self) -> &'dtb str {
+	/// The name as it would show up in a devicetree source file.
+	pub fn source_name(&self) -> &'dtb str {
 		if self.name.is_empty() {
 			"/"
 		} else {
@@ -137,8 +139,9 @@ impl<'dtb> Node<'dtb> {
 	pub fn start_cursor(&self) -> Cursor {
 		Cursor {
 			depth: self.contents.depth - 1,
-			offset: (self.contents.offset - self.name.len() as u32 - 1) / 4 * 4
-				- super::token::TOKEN_SIZE,
+			offset: ((self.contents.offset - self.name.len() as u32 - 1)
+				& TOKEN_SIZE.wrapping_neg())
+				- TOKEN_SIZE,
 		}
 	}
 
@@ -227,11 +230,9 @@ impl<'dtb> Display for Node<'dtb> {
 			}
 
 			match token {
-				Token::BeginNode { mut name } => {
+				Token::BeginNode(node) => {
 					write_indent(f, prev_depth)?;
-					if name.is_empty() {
-						name = "/";
-					}
+					let name = if node.name.is_empty() { "/" } else { node.name };
 					write!(f, "{name} {{")?;
 					just_began_node = true;
 				}
@@ -283,7 +284,7 @@ impl<'dtb> Item<'dtb> {
 pub struct NodeItems<'dtb> {
 	dt: &'dtb Devicetree,
 	at_depth: u32,
-	cursor: Cursor,
+	pub(crate) cursor: Cursor,
 }
 
 impl<'dtb> NodeItems<'dtb> {
@@ -295,10 +296,6 @@ impl<'dtb> NodeItems<'dtb> {
 			at_depth: node.contents.depth,
 			cursor,
 		}
-	}
-
-	pub fn cursor(&self) -> Cursor {
-		self.cursor
 	}
 
 	pub fn end_cursor(mut self) -> Result<Cursor> {
@@ -316,7 +313,7 @@ impl<'dtb> FallibleIterator for NodeItems<'dtb> {
 			let token_depth = self.cursor.depth;
 			let Some(token) = self.dt.next_token(&mut self.cursor)? else { return Ok(None) };
 			if token_depth == self.at_depth {
-				return Ok(token.to_item(self.dt, self.cursor));
+				return Ok(token.into_item());
 			}
 		}
 		Ok(None)
@@ -333,6 +330,7 @@ pub struct NodeProperties<'dtb> {
 }
 
 impl<'dtb> NodeProperties<'dtb> {
+	/// The cursor has to be inside the node.
 	pub fn new(dt: &'dtb Devicetree, cursor: Cursor) -> Self {
 		Self { dt, cursor }
 	}
@@ -372,12 +370,13 @@ impl<'dtb> FallibleIterator for NodeProperties<'dtb> {
 pub struct NodeChildren<'dtb>(NodeItems<'dtb>);
 
 impl<'dtb> NodeChildren<'dtb> {
+	/// The cursor has to be inside the node.
 	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
 		Self(NodeItems::new(node, cursor))
 	}
 
-	pub fn cursor(&self) -> Cursor {
-		self.0.cursor
+	pub fn end_cursor(self) -> Result<Cursor> {
+		self.0.end_cursor()
 	}
 
 	pub fn find_by_name(

@@ -1,9 +1,8 @@
 //! Interface for low-level parsing of a devicetree blob.
 //!
-//! It consists of _blocks_,
-//! most importantly the struct block, which in turn is made of [`Token`]s. You
-//! can either iterate over them directly using [`Devicetree::next_token`] or
-//! make use of [`Node`]s and [`Property`]s.
+//! It consists of _blocks_, most importantly the struct block, which in turn is
+//! made of [`Token`]s. You can either iterate over them directly using
+//! [`Devicetree::next_token`] or make use of [`Node`]s and [`Property`]s.
 
 mod item;
 mod token;
@@ -117,13 +116,18 @@ impl Devicetree {
 		Self::check_magic(blob)?;
 
 		let size = Self::totalsize(blob) as usize;
-		// one check left out: idk if its allowed, but sometimes the dtb's length is not divisible by 8
 		if size < HEADER_SIZE || usize::overflowing_add(ptr as usize, size).1 {
 			// the buffer is too short or wraps around
 			return Err(Error::InvalidTotalsize);
 		}
 
-		Self::from_slice_internal(slice::from_raw_parts(ptr, size / DTB_ALIGN))
+		// idk if its allowed, but sometimes the dtb's length is not divisible by 8
+		let slice_len = if size % 8 == 0 {
+			size / DTB_ALIGN
+		} else {
+			(size + 7) / DTB_ALIGN
+		};
+		Self::from_slice_internal(slice::from_raw_parts(ptr, slice_len))
 	}
 
 	/// Constructs a devicetree from a slice containing a DTB.
@@ -145,10 +149,14 @@ impl Devicetree {
 	#[cfg(feature = "alloc")]
 	pub fn from_vec(blob: Vec<u64>) -> Result<Box<Self>> {
 		Self::safe_checks(&blob)?;
-		let tree = Box::into_raw(blob.into_boxed_slice());
-		let tree = unsafe { Box::from_raw(tree as *mut Devicetree) };
+		let tree = unsafe { Self::from_box_unchecked(blob.into_boxed_slice()) };
 		tree.late_checks()?;
 		Ok(tree)
+	}
+
+	#[cfg(feature = "alloc")]
+	unsafe fn from_box_unchecked(blob: Box<[u64]>) -> Box<Self> {
+		Box::from_raw(Box::into_raw(blob) as *mut Devicetree)
 	}
 
 	/// Constructs a devicetree from an unaligned slice containing a DTB.
@@ -351,8 +359,7 @@ impl<'a> From<&'a Devicetree> for &'a [u64] {
 #[cfg(feature = "alloc")]
 impl<'a> From<&'a Devicetree> for Box<Devicetree> {
 	fn from(dt: &'a Devicetree) -> Self {
-		let raw: *mut [u64] = Box::into_raw(dt.blob.into());
-		unsafe { Box::from_raw(raw as *mut Devicetree) }
+		unsafe { Devicetree::from_box_unchecked(dt.blob.into()) }
 	}
 }
 

@@ -93,8 +93,7 @@ impl<'dtb> FallibleIterator for Strings<'dtb> {
 
 impl<'dtb> DoubleEndedFallibleIterator for Strings<'dtb> {
 	fn next_back(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		let idx = usize::checked_sub(self.value.len(), 1);
-		let Some(value) = idx.and_then(|idx| self.value.get(..idx)) else { return Ok(None) };
+		let [value @ .., _] = self.value else { return Ok(None) };
 		let idx = value.iter().rposition(|&b| b == 0).map_or(0, |i| i + 1);
 		self.value = &self.value[..idx];
 		let bytes = AsciiStr::from_ascii(&value[idx..]).map_err(|_| Error::UnsuitableProperty)?;
@@ -137,7 +136,7 @@ impl<'dtb> DeserializeProperty<'dtb> for Reg<'dtb> {
 		if cx.address_cells > 4 || cx.size_cells > 4 {
 			return Err(Error::TooManyCells);
 		}
-		let Some(value) = blob_prop.value_u32() else { return Err(Error::UnsuitableProperty) };
+		let value = blob_prop.value_u32().ok_or(Error::UnsuitableProperty)?;
 		Self::new(value, cx.address_cells, cx.size_cells)
 	}
 }
