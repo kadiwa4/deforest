@@ -10,7 +10,7 @@ mod token;
 pub use item::*;
 pub use token::*;
 
-use crate::{util, Path};
+use crate::{util, DeserializeNode, NodeContext, Path};
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
 use core::{
@@ -330,6 +330,10 @@ impl Devicetree {
 		}
 
 		Ok(Some(node))
+	}
+
+	pub fn parse_root<'dtb, T: DeserializeNode<'dtb>>(&'dtb self) -> crate::Result<T> {
+		T::deserialize(&self.root_node()?, &NodeContext::default()).map(|(v, _)| v)
 	}
 
 	/// Iterates over the memory reservation block.

@@ -147,12 +147,12 @@ impl<'dtb> DeserializeProperty<'dtb> for Reg<'dtb> {
 }
 
 impl Iterator for Reg<'_> {
-	type Item = (u128, u128);
+	type Item = RegBlock;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let address = util::parse_cells(&mut self.value, self.address_cells)?;
 		let length = util::parse_cells(&mut self.value, self.size_cells).unwrap();
-		Some((address, length))
+		Some(RegBlock(address, length))
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
@@ -165,9 +165,67 @@ impl DoubleEndedIterator for Reg<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		let length = util::parse_cells_back(&mut self.value, self.size_cells)?;
 		let address = util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
-		Some((address, length))
+		Some(RegBlock(address, length))
 	}
 }
 
 impl ExactSizeIterator for Reg<'_> {}
 impl FusedIterator for Reg<'_> {}
+
+/// _(address, length)_ pair contained in [`Reg`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RegBlock(pub u128, pub u128);
+
+impl RegBlock {
+	/// Parses an element of a `reg` property.
+	///
+	/// Returns something only if the length of the value is a multiple of 4 and
+	/// both cell counts are no bigger than 16 bytes each. The 16-byte limit is
+	/// not part of the spec. The address and size each default to 0 if zero
+	/// cells are to be parsed.
+	pub fn parse(bytes: &mut &[u32], address_cells: Cells, size_cells: Cells) -> Option<Self> {
+		let address = util::parse_cells(bytes, address_cells)?;
+		let length = util::parse_cells(bytes, size_cells)?;
+		Some(Self(address, length))
+	}
+}
+
+/// Value of `initial-mapped-area` property.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct InitialMappedArea {
+	effective_address: u64,
+	physical_address: u64,
+	size: u32,
+}
+
+impl<'dtb> DeserializeProperty<'dtb> for InitialMappedArea {
+	fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		let mut bytes = <&[u32]>::deserialize(blob_prop, cx)?;
+		if bytes.len() != 5 {
+			return Err(Error::UnsuitableProperty);
+		}
+		Ok(Self {
+			effective_address: util::parse_cells(&mut bytes, 2).unwrap() as u64,
+			physical_address: util::parse_cells(&mut bytes, 2).unwrap() as u64,
+			size: util::parse_cells(&mut bytes, 1).unwrap() as u32,
+		})
+	}
+}
+
+/// Property value that can be either 1 or 2 cells.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct SmallU64(pub u64);
+
+impl<'dtb> DeserializeProperty<'dtb> for SmallU64 {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+		let value = blob_prop.value();
+		if let Ok(arr) = value.try_into() {
+			Ok(Self(u32::from_be_bytes(arr) as u64))
+		} else if let Ok(arr) = value.try_into() {
+			Ok(Self(u64::from_be_bytes(arr)))
+		} else {
+			Err(Error::UnsuitableProperty)
+		}
+	}
+}

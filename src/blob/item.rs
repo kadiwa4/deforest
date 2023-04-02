@@ -328,7 +328,7 @@ pub struct NodeItems<'dtb> {
 impl<'dtb> NodeItems<'dtb> {
 	/// The cursor has to be inside the node.
 	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
-		debug_assert!(cursor >= node.contents && cursor.depth >= node.contents.depth);
+		debug_assert!(node.contents <= cursor && node.contents.depth <= cursor.depth);
 		Self {
 			dt: node.dt,
 			at_depth: node.contents.depth,

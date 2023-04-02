@@ -1,7 +1,8 @@
 use devicetree::{
 	blob::{CursorRange, Devicetree},
 	fallible_iterator::FallibleIterator,
-	prop_value, DeserializeProperty, NodeContext,
+	prop_value::{self, RegBlock},
+	DeserializeProperty, NodeContext,
 };
 use std::iter;
 
@@ -78,7 +79,7 @@ fn paths() {
 			prop_value::Reg::deserialize(prop0, &cx)
 				.unwrap()
 				.collect::<Vec<_>>(),
-			[(0x7e104000, 0x10)]
+			[RegBlock(0x7e104000, 0x10)]
 		);
 
 		let node1 = dt.get_node_strict(PATH1).unwrap().unwrap();

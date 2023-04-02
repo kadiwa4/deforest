@@ -14,7 +14,7 @@ pub mod prop_value;
 #[cfg(feature = "derive")]
 pub use devicetree_derive::*;
 
-use blob::{Cursor, Node, Property};
+use blob::{Cursor, CursorRange, Node, Property};
 use core::{
 	fmt::{self, Display, Formatter},
 	iter, slice,
@@ -157,6 +157,15 @@ impl<'dtb> DeserializeProperty<'dtb> for () {
 	}
 }
 
+impl<'dtb> DeserializeProperty<'dtb> for bool {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+		if !blob_prop.value().is_empty() {
+			return Err(Error::UnsuitableProperty);
+		}
+		Ok(true)
+	}
+}
+
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
 		Ok(blob_prop.value())
@@ -232,9 +241,22 @@ impl<'dtb, T: DeserializeNode<'dtb>> DeserializeNode<'dtb> for Option<T> {
 	}
 }
 
+pub trait ExtendDeserializedNode<'dtb>: Extend<Self::Node> {
+	type Node: DeserializeNode<'dtb>;
+
+	#[doc(hidden)]
+	fn _extend_<T: Iterator<Item = Self::Node>>(&mut self, iter: T) {
+		self.extend(iter)
+	}
+}
+
+impl<'dtb> ExtendDeserializedNode<'dtb> for CursorRange<'dtb> {
+	type Node = Node<'dtb>;
+}
+
 #[cfg(feature = "alloc")]
 mod alloc_impl {
-	use crate::*;
+	use crate::{prop_value::RegBlock, *};
 	use alloc::{boxed::Box, string::String, vec::Vec};
 	use blob::Item;
 
@@ -334,6 +356,18 @@ mod alloc_impl {
 		}
 	}
 
+	impl<'dtb> DeserializeProperty<'dtb> for Vec<RegBlock> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+			prop_value::Reg::deserialize(blob_prop, cx).map(Vec::from_iter)
+		}
+	}
+
+	impl<'dtb> DeserializeProperty<'dtb> for Box<[RegBlock]> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+			prop_value::Reg::deserialize(blob_prop, cx).map(Box::from_iter)
+		}
+	}
+
 	impl<'dtb> DeserializeNode<'dtb> for Vec<Item<'dtb>> {
 		fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
@@ -346,6 +380,10 @@ mod alloc_impl {
 			let mut items = blob_node.items();
 			Ok((collect_vec(&mut items)?.into_boxed_slice(), items.cursor))
 		}
+	}
+
+	impl<'dtb, A: DeserializeNode<'dtb>> ExtendDeserializedNode<'dtb> for Vec<A> {
+		type Node = A;
 	}
 
 	fn collect_vec<T, E>(mut it: impl FallibleIterator<Item = T, Error = E>) -> Result<Vec<T>, E> {
@@ -418,23 +456,6 @@ pub mod util {
 		}
 		*bytes = &bytes[..idx];
 		Some(value)
-	}
-
-	/// Parses the value of a `reg` property, returning the address and size in
-	/// that order.
-	///
-	/// Returns something only if the length of the value is a multiple of 4 and
-	/// both cell counts are no bigger than 16 bytes each. The 16-byte limit is
-	/// not part of the spec. The address and size each default to 0 if zero
-	/// cells are to be parsed.
-	pub fn parse_reg_value(
-		bytes: &mut &[u32],
-		address_cells: Cells,
-		size_cells: Cells,
-	) -> Option<(u128, u128)> {
-		let address = parse_cells(bytes, address_cells)?;
-		let length = parse_cells(bytes, size_cells)?;
-		Some((address, length))
 	}
 
 	pub(crate) fn get_c_str(blob: &[u8]) -> Result<&str, blob::Error> {

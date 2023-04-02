@@ -15,6 +15,12 @@ name = "borrowed_model"
 crate-type = ["lib"]
 required-features = ["derive"]
 
+[[example]]
+name = "owned_model"
+crate-type = ["lib"]
+test = true
+required-features = ["alloc", "derive"]
+
 [dependencies]
 ascii = { version = "1.1.0", default-features = false }
 devicetree_derive = { path = "devicetree_derive", optional = true }

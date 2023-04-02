@@ -21,17 +21,13 @@ struct RootNode<'dtb> {
 	chosen: Option<ChosenNode<'dtb>>,
 	#[dt_child]
 	cpus: Option<CpusNode<'dtb>>,
-
-	#[dt_child]
-	soc: Option<Cursor>,
 }
 
 #[derive(Default, DeserializeNode)]
 struct MemoryNode<'dtb> {
-	device_type: &'dtb str,
 	reg: Option<prop_value::Reg<'dtb>>,
-	initial_mapped_area: Option<&'dtb [u32]>,
-	hotpluggable: Option<()>,
+	initial_mapped_area: Option<prop_value::InitialMappedArea>,
+	hotpluggable: bool,
 }
 
 #[derive(Default, DeserializeNode)]
@@ -48,8 +44,8 @@ struct ReservedMemoryChild<'dtb> {
 	alignment: Option<&'dtb [u32]>,
 	alloc_ranges: Option<&'dtb [u32]>,
 	compatible: Option<prop_value::Strings<'dtb>>,
-	no_map: Option<()>,
-	reusable: Option<()>,
+	no_map: bool,
+	reusable: bool,
 }
 
 #[derive(Default, DeserializeNode)]
@@ -69,10 +65,9 @@ struct CpusNode<'dtb> {
 
 #[derive(Default, DeserializeNode)]
 struct CpuNode<'dtb> {
-	device_type: &'dtb str,
 	reg: Option<prop_value::Reg<'dtb>>,
-	clock_frequency: &'dtb [u32],
-	timebase_frequency: &'dtb [u32],
+	clock_frequency: prop_value::SmallU64,
+	timebase_frequency: prop_value::SmallU64,
 	status: Option<&'dtb str>,
 	enable_method: Option<prop_value::Strings<'dtb>>,
 	cpu_release_addr: Option<u64>,
@@ -83,7 +78,7 @@ struct CpuNode<'dtb> {
 	// mmu_type: Option<&'dtb str>,
 
 	// // power ISA translate look-aside buffer properties
-	// tlb_split: Option<()>,
+	// tlb_split: bool,
 	// tlb_size: Option<u32>,
 	// tlb_sets: Option<u32>,
 	// d_tlb_size: Option<u32>,
@@ -92,7 +87,7 @@ struct CpuNode<'dtb> {
 	// i_tlb_sets: Option<u32>,
 
 	// // power ISA cache properties
-	// cache_unified: Option<()>,
+	// cache_unified: bool,
 	// cache_size: Option<u32>,
 	// cache_sets: Option<u32>,
 	// cache_block_size: Option<u32>,

@@ -1,4 +1,3 @@
-use heck::AsKebabCase;
 use proc_macro2::{Literal, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{Attribute, Expr, GenericParam, ItemStruct, Lit, Meta};
@@ -12,12 +11,18 @@ enum ItemKind {
 
 /// Derive macro generating an impl of the trait `DeserializeNode`.
 ///
+/// Requires an implementation of `Default`.
+///
 /// Attribute syntax: `#[dt_*]` or `#[dt_* = "<item name>"]`
+///
+/// The default item name is the field name with undescores replaced by hyphens
+/// (and a `#` prepended in case the name ends with `_cells`).
+/// The unit-address is ignored.
 ///
 /// - `#[dt_property]` (default) uses `DeserializeProperty`
 /// - `#[dt_child]` uses `DeserializeNode`
-/// - `#[dt_children]` uses `Default` and `Extend<A>` to collect items of type
-///   `A`, where `A: DeserializeNode`
+/// - `#[dt_children]` uses `ExtendDeserializedNode` to collect items of type
+///   `Self::Node`; it is equivalent to `Extend<Self::Node>`
 ///
 /// `DeserializeNode::deserialize` is always used with an appropriate
 /// `NodeContext`.
@@ -49,7 +54,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				.unwrap_or_else(|| panic!("field {idx} needs an explicit name"))
 				.to_string();
 			let start_hash = if name.ends_with("_cells") { "#" } else { "" };
-			format!("{start_hash}{}", AsKebabCase(name))
+			format!("{start_hash}{}", name.replace('_', "-"))
 		});
 		let field_name = match field.ident {
 			None => TokenTree::Literal(Literal::usize_unsuffixed(idx)),
@@ -82,8 +87,8 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			ItemKind::Children => child_match_arms.extend(quote! {
 				#item_name => {
 					let val;
-					(val, cursor) = ::devicetree::DeserializeNode::deserialize(blob_node, cx)?;
-					<#ty as ::core::iter::Extend<_>>::extend(&mut this.#field_name, ::core::iter::once(val));
+					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, &child_cx)?;
+					<#ty as ::devicetree::ExtendDeserializedNode>::_extend_(&mut this.#field_name, ::core::iter::once(val));
 				}
 			}),
 		};
@@ -126,7 +131,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		quote! {
 			::devicetree::blob::Item::Child(node) => {
 				let cursor;
-				match node.name() {
+				match node.split_name()?.0 {
 					#child_match_arms
 					_ => continue,
 				}
@@ -201,7 +206,15 @@ Valid forms are:
 		}
 		let item_name = match value_lit {
 			None => None,
-			Some(Lit::Str(name)) => Some(name.value()),
+			Some(Lit::Str(name)) => {
+				let name = name.value();
+				assert!(
+					!name.contains('@'),
+					"item name of field `{}` contains unit-address",
+					field_name()
+				);
+				Some(name)
+			}
 			Some(_) => panic_invalid(attr_name),
 		};
 		Some((kind, item_name))
