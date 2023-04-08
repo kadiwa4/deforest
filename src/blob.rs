@@ -72,7 +72,7 @@ impl From<Error> for crate::Error {
 	}
 }
 
-type Result<T, E = Error> = core::result::Result<T, E>;
+pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 const DTB_ALIGN: usize = 8;
 const DTB_MAGIC: u32 = 0xd00d_feed_u32.to_be();

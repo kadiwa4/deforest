@@ -112,6 +112,7 @@ impl Default for Strings<'static> {
 }
 
 /// Iterator over the _(address, length)_ pairs of `reg`'s value.
+#[derive(Clone, Debug)]
 pub struct Reg<'dtb> {
 	value: &'dtb [u32],
 	address_cells: Cells,
@@ -158,6 +159,15 @@ impl Iterator for Reg<'_> {
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.value.len() / (self.address_cells + self.size_cells) as usize;
 		(len, Some(len))
+	}
+
+	fn nth(&mut self, n: usize) -> Option<RegBlock> {
+		let idx = usize::checked_mul(n, (self.address_cells + self.size_cells) as usize)?;
+		Self {
+			value: self.value.get(idx..)?,
+			..self.clone()
+		}
+		.next()
 	}
 }
 

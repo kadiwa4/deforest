@@ -89,7 +89,8 @@ impl Cursor {
 ///
 /// Do not use compare cursor ranges from different devicetrees.
 /// Only `extend` a range with nodes with the same valid node name from the same
-/// devicetree. Empty ranges do not belong to any node name/devicetree.
+/// devicetree. (Cannot be used with `#[dt_children(rest)]`.)
+/// Empty ranges do not belong to any node name/devicetree.
 ///
 /// Can be used with [`Devicetree::nodes_in_range`] or
 /// [`Devicetree::deserialize_in_range`] or by advancing cursors manually.

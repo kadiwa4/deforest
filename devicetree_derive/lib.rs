@@ -30,6 +30,9 @@ enum ItemKind {
 ///
 /// `DeserializeNode::deserialize` is always used with an appropriate
 /// `NodeContext`.
+///
+/// The lifetime `'dtb` (if it exists) is special because it will be used for
+/// the `DeserializeNode<'dtb>` implementation.
 #[proc_macro_derive(DeserializeNode, attributes(dt_property, dt_child, dt_children))]
 pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let strct: ItemStruct = syn::parse(tokens).expect("invalid struct");
