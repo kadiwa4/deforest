@@ -46,6 +46,24 @@ impl<'dtb> Debug for Property<'dtb> {
 
 impl<'dtb> Display for Property<'dtb> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		const HEX_STRING: &[u8] = b"0123456789abcdef";
+
+		struct HexArray<const N: usize>([u8; N]);
+
+		impl<const N: usize> Display for HexArray<N> {
+			fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+				let mut buf = [(0, 0); N];
+				for (out, n) in core::iter::zip(&mut buf, self.0) {
+					out.0 = HEX_STRING[n as usize >> 4];
+					out.1 = HEX_STRING[n as usize & 0x0f];
+				}
+				unsafe {
+					let buf = core::slice::from_raw_parts(&buf as *const _ as *const u8, N * 2);
+					f.write_str(core::str::from_utf8_unchecked(buf))
+				}
+			}
+		}
+
 		f.write_str(self.name().map_err(|_| fmt::Error)?)?;
 		if let [ref rest @ .., last_byte] = *self.value {
 			f.write_str(" = ")?;
@@ -75,19 +93,17 @@ impl<'dtb> Display for Property<'dtb> {
 				f.write_char('[')?;
 				let len = self.value.len();
 				if len % 4 == 0 {
-					for b in rest.chunks_exact(4) {
-						let (a, b, c, d) = (b[0], b[1], b[2], b[3]);
-						write!(f, "{a:02x}{b:02x}{c:02x}{d:02x} ")?;
+					for bytes in rest.chunks_exact(4) {
+						write!(f, "{} ", HexArray(<[u8; 4]>::try_from(bytes).unwrap()))?;
 					}
-					let (a, b, c) = (rest[len - 4], rest[len - 3], rest[len - 2]);
 					// last byte is written below
-					write!(f, "{a:02x}{b:02x}{c:02x}")?;
+					HexArray(<[u8; 3]>::try_from(&rest[len - 4..]).unwrap()).fmt(f)?;
 				} else {
 					for &b in rest {
-						write!(f, "{b:02x} ")?;
+						write!(f, "{} ", HexArray([b]))?;
 					}
 				}
-				write!(f, "{last_byte:02x}]")?;
+				write!(f, "{}]", HexArray([last_byte]))?;
 			}
 		}
 		f.write_char(';')
