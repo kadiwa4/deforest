@@ -6,7 +6,7 @@ use core::{
 	cmp::Ordering,
 	hash::{Hash, Hasher},
 	marker::PhantomData,
-	mem::{self, size_of},
+	mem::size_of,
 };
 
 use fallible_iterator::FallibleIterator;
@@ -76,8 +76,8 @@ impl Cursor {
 		// basically u32::div_ceil(offset + add, 4) * 4
 		let offset = u32::checked_add(self.offset, add as u32)
 			.and_then(|offset| u32::checked_add(offset, TOKEN_SIZE - 1))
-			.map(|offset| offset & TOKEN_SIZE.wrapping_neg())
-			.ok_or(Error::UnexpectedEnd)?;
+			.ok_or(Error::UnexpectedEnd)?
+			& TOKEN_SIZE.wrapping_neg();
 
 		blob.get(offset as usize..).ok_or(Error::UnexpectedEnd)?;
 		self.offset = offset;
@@ -279,6 +279,12 @@ impl Devicetree {
 	}
 
 	fn next_raw(&self, cursor: &mut Cursor) -> Result<Option<RawToken>> {
+		const BEGIN_NODE: u32 = RawToken::BeginNode as u32;
+		const END_NODE: u32 = RawToken::EndNode as u32;
+		const PROP: u32 = RawToken::Prop as u32;
+		const NOP: u32 = RawToken::Nop as u32;
+		const END: u32 = RawToken::End as u32;
+
 		let offset = cursor.offset as usize;
 		let Some(token) = util::slice_get_with_len(self.blob_u8(), offset, TOKEN_SIZE as usize)
 		else {
@@ -287,19 +293,15 @@ impl Devicetree {
 		let token = unsafe { *(token as *const _ as *const u32) };
 
 		cursor.offset += TOKEN_SIZE;
-		if ![
-			RawToken::BeginNode as u32,
-			RawToken::EndNode as u32,
-			RawToken::Prop as u32,
-			RawToken::Nop as u32,
-			RawToken::End as u32,
-		]
-		.contains(&token)
-		{
-			return Err(Error::UnknownToken);
-		}
-
-		Ok(Some(unsafe { mem::transmute(token) }))
+		let token = match token {
+			BEGIN_NODE => RawToken::BeginNode,
+			END_NODE => RawToken::EndNode,
+			PROP => RawToken::Prop,
+			NOP => RawToken::Nop,
+			END => RawToken::End,
+			_ => return Err(Error::UnknownToken),
+		};
+		Ok(Some(token))
 	}
 
 	/// Iterator over the [`Node`]s in the range.
