@@ -168,8 +168,8 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				cx: &::devicetree::NodeContext,
 			) -> ::devicetree::Result<(Self, ::devicetree::blob::Cursor)> {
 				let mut this: Self = ::core::default::Default::default();
-				let mut items = blob_node.items();
 				let mut child_cx: ::devicetree::NodeContext = ::core::default::Default::default();
+				let mut items = blob_node.items();
 				while let ::core::option::Option::Some(item) =
 					::devicetree::fallible_iterator::FallibleIterator::next(&mut items)?
 				{

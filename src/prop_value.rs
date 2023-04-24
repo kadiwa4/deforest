@@ -151,9 +151,7 @@ impl Iterator for Reg<'_> {
 	type Item = RegBlock;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let address = util::parse_cells(&mut self.value, self.address_cells)?;
-		let length = util::parse_cells(&mut self.value, self.size_cells).unwrap();
-		Some(RegBlock(address, length))
+		RegBlock::parse(&mut self.value, self.address_cells, self.size_cells)
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
@@ -190,13 +188,104 @@ impl RegBlock {
 	/// Parses an element of a `reg` property.
 	///
 	/// Returns something only if the length of the value is a multiple of 4 and
-	/// both cell counts are no bigger than 16 bytes each. The 16-byte limit is
-	/// not part of the spec. The address and size each default to 0 if zero
-	/// cells are to be parsed.
+	/// none of the cell counts are bigger than 16 bytes each. The 16-byte limit
+	/// is not part of the spec. The fields each default to 0 if zero cells are
+	/// to be parsed.
 	pub fn parse(bytes: &mut &[u32], address_cells: Cells, size_cells: Cells) -> Option<Self> {
 		let address = util::parse_cells(bytes, address_cells)?;
 		let length = util::parse_cells(bytes, size_cells)?;
 		Some(Self(address, length))
+	}
+}
+
+/// Iterator over the _(child-bus-address, parent-bus-address, length)_ triplets of `ranges`' value.
+#[derive(Clone, Debug, Default)]
+pub struct Ranges<'dtb> {
+	value: &'dtb [u32],
+	address_cells: Cells,
+	size_cells: Cells,
+}
+
+impl<'dtb> Ranges<'dtb> {
+	/// Creates a new iterator over the _(address, length)_ pairs of the value.
+	pub fn new(value: &'dtb [u32], address_cells: Cells, size_cells: Cells) -> Result<Self> {
+		if address_cells > 4 || size_cells > 4 {
+			return Err(Error::TooManyCells);
+		}
+		if value.len() % (address_cells * 2 + size_cells) as usize != 0 {
+			return Err(Error::UnsuitableProperty);
+		}
+
+		Ok(Self {
+			value,
+			address_cells,
+			size_cells,
+		})
+	}
+}
+
+impl<'dtb> DeserializeProperty<'dtb> for Ranges<'dtb> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		if cx.address_cells > 4 || cx.size_cells > 4 {
+			return Err(Error::TooManyCells);
+		}
+		let value = <&[u32]>::deserialize(blob_prop, cx)?;
+		Self::new(value, cx.address_cells, cx.size_cells)
+	}
+}
+
+impl Iterator for Ranges<'_> {
+	type Item = RangesBlock;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		RangesBlock::parse(&mut self.value, self.address_cells, self.size_cells)
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let len = self.value.len() / (self.address_cells * 2 + self.size_cells) as usize;
+		(len, Some(len))
+	}
+
+	fn nth(&mut self, n: usize) -> Option<RangesBlock> {
+		let idx = usize::checked_mul(n, (self.address_cells * 2 + self.size_cells) as usize)?;
+		Self {
+			value: self.value.get(idx..)?,
+			..self.clone()
+		}
+		.next()
+	}
+}
+
+impl DoubleEndedIterator for Ranges<'_> {
+	fn next_back(&mut self) -> Option<Self::Item> {
+		let length = util::parse_cells_back(&mut self.value, self.size_cells)?;
+		let parent_bus_address =
+			util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
+		let child_bus_address =
+			util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
+		Some(RangesBlock(child_bus_address, parent_bus_address, length))
+	}
+}
+
+impl ExactSizeIterator for Ranges<'_> {}
+impl FusedIterator for Ranges<'_> {}
+
+/// _(child-bus-address, parent-bus-address, length)_ triplets in [`Ranges`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RangesBlock(pub u128, pub u128, pub u128);
+
+impl RangesBlock {
+	/// Parses an element of a `ranges` property.
+	///
+	/// Returns something only if the length of the value is a multiple of 4 and
+	/// none of the cell counts are bigger than 16 bytes each. The 16-byte limit
+	/// is not part of the spec. The fields each default to 0 if zero cells are
+	/// to be parsed.
+	pub fn parse(bytes: &mut &[u32], address_cells: Cells, size_cells: Cells) -> Option<Self> {
+		let child_bus_address = util::parse_cells(bytes, address_cells)?;
+		let parent_bus_address = util::parse_cells(bytes, address_cells)?;
+		let length = util::parse_cells(bytes, size_cells)?;
+		Some(Self(child_bus_address, parent_bus_address, length))
 	}
 }
 
