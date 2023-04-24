@@ -18,7 +18,7 @@ impl Default for AddressCells {
 
 impl<'dtb> DeserializeProperty<'dtb> for AddressCells {
 	#[inline]
-	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
 		let cells = u32::deserialize(blob_prop, cx)?;
 		if cells > 4 {
 			return Err(Error::TooManyCells);
@@ -39,7 +39,7 @@ impl Default for SizeCells {
 
 impl<'dtb> DeserializeProperty<'dtb> for SizeCells {
 	#[inline]
-	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
 		let cells = u32::deserialize(blob_prop, cx)?;
 		if cells > 4 {
 			return Err(Error::TooManyCells);
@@ -69,7 +69,7 @@ impl<'dtb> Strings<'dtb> {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Strings<'dtb> {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		Self::new(blob_prop.value()).ok_or(Error::UnsuitableProperty)
 	}
 }
@@ -138,7 +138,7 @@ impl<'dtb> Reg<'dtb> {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Reg<'dtb> {
-	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
 		if cx.address_cells > 4 || cx.size_cells > 4 {
 			return Err(Error::TooManyCells);
 		}
@@ -222,7 +222,7 @@ impl<'dtb> Ranges<'dtb> {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Ranges<'dtb> {
-	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
 		if cx.address_cells > 4 || cx.size_cells > 4 {
 			return Err(Error::TooManyCells);
 		}
@@ -292,7 +292,7 @@ pub struct InitialMappedArea {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for InitialMappedArea {
-	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
 		let mut bytes = <&[u32]>::deserialize(blob_prop, cx)?;
 		if bytes.len() != 5 {
 			return Err(Error::UnsuitableProperty);
@@ -311,7 +311,7 @@ impl<'dtb> DeserializeProperty<'dtb> for InitialMappedArea {
 pub struct SmallU64(pub u64);
 
 impl<'dtb> DeserializeProperty<'dtb> for SmallU64 {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		let value = blob_prop.value();
 		if let Ok(arr) = value.try_into() {
 			Ok(Self(u32::from_be_bytes(arr) as u64))
