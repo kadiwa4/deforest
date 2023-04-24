@@ -31,7 +31,7 @@ impl<'dtb> Property<'dtb> {
 	/// Parses the value. Equivalent to `DeserializeProperty` except that the
 	/// default [`NodeContext`] is used.
 	pub fn contextless_parse<T: DeserializeProperty<'dtb>>(self) -> crate::Result<T> {
-		T::deserialize(self, &NodeContext::default())
+		T::deserialize(self, NodeContext::default())
 	}
 }
 

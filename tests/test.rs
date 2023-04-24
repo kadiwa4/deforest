@@ -76,7 +76,7 @@ fn paths() {
 		cx.size_cells = size_cells;
 
 		assert_eq!(
-			prop_value::Reg::deserialize(prop0, &cx)
+			prop_value::Reg::deserialize(prop0, cx)
 				.unwrap()
 				.collect::<Vec<_>>(),
 			[RegBlock(0x7e104000, 0x10)]

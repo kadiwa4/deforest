@@ -333,7 +333,7 @@ impl Devicetree {
 	}
 
 	pub fn parse_root<'dtb, T: DeserializeNode<'dtb>>(&'dtb self) -> crate::Result<T> {
-		T::deserialize(&self.root_node()?, &NodeContext::default()).map(|(v, _)| v)
+		T::deserialize(&self.root_node()?, NodeContext::default()).map(|(v, _)| v)
 	}
 
 	/// Iterates over the memory reservation block.

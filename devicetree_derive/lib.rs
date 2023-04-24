@@ -90,12 +90,12 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				});
 			},
 			ItemKind::Child => child_match_arms.extend(quote! {
-				#item_name => (this.#field_name, cursor) = <#ty as ::devicetree::DeserializeNode<'dtb>>::deserialize(&node, &child_cx)?,
+				#item_name => (this.#field_name, cursor) = <#ty as ::devicetree::DeserializeNode<'dtb>>::deserialize(&node, child_cx)?,
 			}),
 			ItemKind::Children => child_match_arms.extend(quote! {
 				#item_name => {
 					let val;
-					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, &child_cx)?;
+					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
 					<#ty as ::devicetree::ExtendDeserializedNode>::_extend_(&mut this.#field_name, ::core::iter::once(val));
 				}
 			}),
@@ -103,7 +103,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				assert!(children_rest_expr.is_none(), "multilple fields with attribute `#[dt_children(rest)]`");
 				children_rest_expr = Some(quote! {{
 					let val;
-					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, &child_cx)?;
+					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
 					<#ty as ::devicetree::ExtendDeserializedNode>::_extend_(&mut this.#field_name, ::core::iter::once(val));
 				}});
 			}
@@ -165,10 +165,10 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		impl #impl_generics ::devicetree::DeserializeNode<'dtb> for #name #ty_generics #where_clause {
 			fn deserialize(
 				blob_node: &::devicetree::blob::Node<'dtb>,
-				cx: &::devicetree::NodeContext,
+				cx: ::devicetree::NodeContext<'_>,
 			) -> ::devicetree::Result<(Self, ::devicetree::blob::Cursor)> {
 				let mut this: Self = ::core::default::Default::default();
-				let mut child_cx: ::devicetree::NodeContext = ::core::default::Default::default();
+				let mut child_cx = cx;
 				let mut items = blob_node.items();
 				while let ::core::option::Option::Some(item) =
 					::devicetree::fallible_iterator::FallibleIterator::next(&mut items)?

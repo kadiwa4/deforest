@@ -16,6 +16,7 @@ pub use devicetree_derive::*;
 
 use blob::{Cursor, CursorRange, Node, Property};
 use core::{
+	any::Any,
 	fmt::{self, Display, Formatter},
 	iter, slice,
 };
@@ -118,18 +119,20 @@ impl Path for str {
 }
 
 /// Holds information for deserialization.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
-pub struct NodeContext {
+pub struct NodeContext<'a> {
+	pub custom: Option<&'a dyn Any>,
 	/// `#address-cells` property of the parent node.
 	pub address_cells: Cells,
 	/// `#size-cells` property of the parent node.
 	pub size_cells: Cells,
 }
 
-impl Default for NodeContext {
+impl Default for NodeContext<'_> {
 	fn default() -> Self {
 		Self {
+			custom: None,
 			address_cells: prop_value::AddressCells::default().0,
 			size_cells: prop_value::SizeCells::default().0,
 		}
@@ -139,17 +142,17 @@ impl Default for NodeContext {
 /// Types that can be parsed from a devicetree property.
 pub trait DeserializeProperty<'dtb>: Sized {
 	/// Parses a devicetree property into this type.
-	fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self>;
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self>;
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Property<'dtb> {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		Ok(blob_prop)
 	}
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for () {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		if !blob_prop.value().is_empty() {
 			return Err(Error::UnsuitableProperty);
 		}
@@ -158,7 +161,7 @@ impl<'dtb> DeserializeProperty<'dtb> for () {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for bool {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		if !blob_prop.value().is_empty() {
 			return Err(Error::UnsuitableProperty);
 		}
@@ -167,13 +170,13 @@ impl<'dtb> DeserializeProperty<'dtb> for bool {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		Ok(blob_prop.value())
 	}
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		let val = blob_prop.value();
 		if val.len() % 4 != 0 {
 			return Err(Error::UnsuitableProperty);
@@ -183,7 +186,7 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for u32 {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		match blob_prop.value().try_into() {
 			Ok(arr) => Ok(Self::from_be_bytes(arr)),
 			Err(_) => Err(Error::UnsuitableProperty),
@@ -192,7 +195,7 @@ impl<'dtb> DeserializeProperty<'dtb> for u32 {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for u64 {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		match blob_prop.value().try_into() {
 			Ok(arr) => Ok(Self::from_be_bytes(arr)),
 			Err(_) => Err(Error::UnsuitableProperty),
@@ -201,7 +204,7 @@ impl<'dtb> DeserializeProperty<'dtb> for u64 {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb str {
-	fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 		let [rest @ .., 0] = blob_prop.value() else { return Err(Error::UnsuitableProperty) };
 		let bytes = AsciiStr::from_ascii(rest).map_err(|_| Error::UnsuitableProperty)?;
 		Ok(bytes.as_str())
@@ -209,7 +212,7 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb str {
 }
 
 impl<'dtb, T: DeserializeProperty<'dtb>> DeserializeProperty<'dtb> for Option<T> {
-	fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 		T::deserialize(blob_prop, cx).map(Some)
 	}
 }
@@ -220,23 +223,23 @@ pub trait DeserializeNode<'dtb>: Sized {
 	///
 	/// The second return value is a cursor pointing to the next token after the
 	/// node.
-	fn deserialize(blob_node: &Node<'dtb>, cx: &NodeContext) -> Result<(Self, Cursor)>;
+	fn deserialize(blob_node: &Node<'dtb>, cx: NodeContext) -> Result<(Self, Cursor)>;
 }
 
 impl<'dtb> DeserializeNode<'dtb> for Node<'dtb> {
-	fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
+	fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext) -> Result<(Self, Cursor)> {
 		Ok((blob_node.clone(), blob_node.end_cursor()?))
 	}
 }
 
 impl<'dtb> DeserializeNode<'dtb> for Cursor {
-	fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
+	fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext) -> Result<(Self, Cursor)> {
 		Ok((blob_node.start_cursor(), blob_node.end_cursor()?))
 	}
 }
 
 impl<'dtb, T: DeserializeNode<'dtb>> DeserializeNode<'dtb> for Option<T> {
-	fn deserialize(blob_node: &Node<'dtb>, cx: &NodeContext) -> Result<(Self, Cursor)> {
+	fn deserialize(blob_node: &Node<'dtb>, cx: NodeContext) -> Result<(Self, Cursor)> {
 		T::deserialize(blob_node, cx).map(|(v, c)| (Some(v), c))
 	}
 }
@@ -283,100 +286,100 @@ mod alloc_impl {
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<u8> {
-		fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 			Ok(blob_prop.value().to_vec())
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<[u8]> {
-		fn deserialize(blob_prop: Property<'dtb>, _cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext) -> Result<Self> {
 			Ok(blob_prop.value().into())
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<u32> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<&[u32]>::deserialize(blob_prop, cx).map(<[u32]>::to_vec)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<[u32]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<&[u32]>::deserialize(blob_prop, cx).map(Box::from)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for String {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<&str>::deserialize(blob_prop, cx).map(String::from)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<str> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<&str>::deserialize(blob_prop, cx).map(Box::from)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<&'dtb str> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			collect_vec(prop_value::Strings::deserialize(blob_prop, cx)?)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<String> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			let strs = prop_value::Strings::deserialize(blob_prop, cx)?;
 			collect_vec(strs.map(|s| Ok(s.into())))
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<Box<str>> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			let strs = prop_value::Strings::deserialize(blob_prop, cx)?;
 			collect_vec(strs.map(|s| Ok(s.into())))
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<[&'dtb str]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<Vec<&str>>::deserialize(blob_prop, cx).map(Vec::into_boxed_slice)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<[String]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<Vec<String>>::deserialize(blob_prop, cx).map(Vec::into_boxed_slice)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<[Box<str>]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			<Vec<Box<str>>>::deserialize(blob_prop, cx).map(Vec::into_boxed_slice)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<RegBlock> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			prop_value::Reg::deserialize(blob_prop, cx).map(Vec::from_iter)
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Box<[RegBlock]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: &NodeContext) -> Result<Self> {
+		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext) -> Result<Self> {
 			prop_value::Reg::deserialize(blob_prop, cx).map(Box::from_iter)
 		}
 	}
 
 	impl<'dtb> DeserializeNode<'dtb> for Vec<Item<'dtb>> {
-		fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
+		fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
 			Ok((collect_vec(&mut items)?, items.cursor))
 		}
 	}
 
 	impl<'dtb> DeserializeNode<'dtb> for Box<[Item<'dtb>]> {
-		fn deserialize(blob_node: &Node<'dtb>, _cx: &NodeContext) -> Result<(Self, Cursor)> {
+		fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
 			Ok((collect_vec(&mut items)?.into_boxed_slice(), items.cursor))
 		}

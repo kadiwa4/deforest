@@ -311,11 +311,11 @@ impl Devicetree {
 
 	/// Iterator over the [`Node`]s in the range, with each node being parsed
 	/// into type `T`.
-	pub fn deserialize_in_range<'dtb, T: DeserializeNode<'dtb>>(
+	pub fn deserialize_in_range<'a, 'dtb, T: DeserializeNode<'dtb>>(
 		&'dtb self,
 		range: CursorRange<'dtb>,
-		cx: NodeContext,
-	) -> DeserializeInRange<'dtb, T> {
+		cx: NodeContext<'a>,
+	) -> DeserializeInRange<'a, 'dtb, T> {
 		DeserializeInRange {
 			nodes: self.nodes_in_range(range),
 			cx,
@@ -385,17 +385,17 @@ impl<'dtb> NodesInRange<'dtb> {
 /// type `T`.
 #[derive(Clone, Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct DeserializeInRange<'dtb, T> {
+pub struct DeserializeInRange<'a, 'dtb, T> {
 	pub nodes: NodesInRange<'dtb>,
-	pub cx: NodeContext,
+	pub cx: NodeContext<'a>,
 	_marker: PhantomData<fn() -> T>,
 }
 
-impl<'dtb, T: DeserializeNode<'dtb>> FallibleIterator for DeserializeInRange<'dtb, T> {
+impl<'a, 'dtb, T: DeserializeNode<'dtb>> FallibleIterator for DeserializeInRange<'a, 'dtb, T> {
 	type Item = T;
 	type Error = crate::Error;
 
 	fn next(&mut self) -> core::result::Result<Option<Self::Item>, Self::Error> {
-		self.nodes.walk_next(|n| T::deserialize(&n, &self.cx))
+		self.nodes.walk_next(|n| T::deserialize(&n, self.cx))
 	}
 }
