@@ -44,22 +44,22 @@ impl Display for Error {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		use Error::*;
 
-		f.write_str("devicetree blob error: ")?;
-		match *self {
-			BlockOutOfBounds => f.write_str("block out of bounds"),
-			IncompatibleVersion => f.write_str("incompatible devicetree version"),
-			InvalidNodeName => f.write_str("invalid node name"),
-			InvalidPropertyHeader => f.write_str("invalid property header"),
-			InvalidRootNode => f.write_str("invalid root node"),
-			InvalidString => f.write_str("invalid string"),
-			InvalidTotalsize => f.write_str("invalid totalsize field"),
-			NoMagicSignature => f.write_str("no magic signature"),
-			UnalignedBlock => f.write_str("unaligned block"),
-			UnexpectedEnd => f.write_str("unexpected end"),
-			UnexpectedEndToken => f.write_str("unexpected END token"),
-			UnexpectedEndNodeToken => f.write_str("unexpected END_NODE token"),
-			UnknownToken => f.write_str("unknown token"),
-		}
+		let description = match *self {
+			BlockOutOfBounds => "block out of bounds",
+			IncompatibleVersion => "incompatible devicetree version",
+			InvalidNodeName => "invalid node name",
+			InvalidPropertyHeader => "invalid property header",
+			InvalidRootNode => "invalid root node",
+			InvalidString => "invalid string",
+			InvalidTotalsize => "invalid totalsize field",
+			NoMagicSignature => "no magic signature",
+			UnalignedBlock => "unaligned block",
+			UnexpectedEnd => "unexpected end",
+			UnexpectedEndToken => "unexpected END token",
+			UnexpectedEndNodeToken => "unexpected END_NODE token",
+			UnknownToken => "unknown token",
+		};
+		write!(f, "devicetree blob error: {description}")
 	}
 }
 

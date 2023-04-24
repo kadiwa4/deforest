@@ -39,18 +39,14 @@ impl Display for Error {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		use Error::*;
 
-		if let Blob(err) = self {
-			return Display::fmt(err, f);
-		}
-
-		f.write_str("devicetree error: ")?;
-		match self {
-			Unknown => f.write_str("unknown"),
-			Blob(_) => Ok(()),
-			InvalidPath => f.write_str("invalid path"),
-			TooManyCells => f.write_str("too many cells"),
-			UnsuitableProperty => f.write_str("unsuitable property"),
-		}
+		let description = match self {
+			Unknown => "unknown",
+			Blob(err) => return Display::fmt(err, f),
+			InvalidPath => "invalid path",
+			TooManyCells => "too many cells",
+			UnsuitableProperty => "unsuitable property",
+		};
+		write!(f, "devicetree error: {description}")
 	}
 }
 
