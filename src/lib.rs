@@ -14,7 +14,7 @@ pub mod prop_value;
 #[cfg(feature = "derive")]
 pub use devicetree_derive::*;
 
-use blob::{Cursor, CursorRange, Node, Property};
+use blob::{Cursor, Node, Property};
 use core::{
 	any::Any,
 	fmt::{self, Display, Formatter},
@@ -244,16 +244,10 @@ impl<'dtb, T: DeserializeNode<'dtb>> DeserializeNode<'dtb> for Option<T> {
 	}
 }
 
-pub trait ExtendDeserializedNode<'dtb>: Extend<Self::Node> {
+pub trait PushDeserializedNode<'dtb> {
 	type Node: DeserializeNode<'dtb>;
 
-	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) {
-		self.extend(core::iter::once(node))
-	}
-}
-
-impl<'dtb> ExtendDeserializedNode<'dtb> for CursorRange<'dtb> {
-	type Node = Node<'dtb>;
+	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>);
 }
 
 #[cfg(feature = "alloc")]
@@ -384,8 +378,12 @@ mod alloc_impl {
 		}
 	}
 
-	impl<'dtb, A: DeserializeNode<'dtb>> ExtendDeserializedNode<'dtb> for Vec<A> {
+	impl<'dtb, A: DeserializeNode<'dtb>> PushDeserializedNode<'dtb> for Vec<A> {
 		type Node = A;
+
+		fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) {
+			self.push(node);
+		}
 	}
 
 	fn collect_vec<T, E>(mut it: impl FallibleIterator<Item = T, Error = E>) -> Result<Vec<T>, E> {

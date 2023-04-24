@@ -1,6 +1,6 @@
 use crate::{
 	blob::{Devicetree, Error, Item, Node, Property, Result},
-	util, DeserializeNode, NodeContext,
+	util, DeserializeNode, NodeContext, PushDeserializedNode,
 };
 use core::{
 	cmp::Ordering,
@@ -174,6 +174,14 @@ impl<'dtb> Extend<Node<'dtb>> for CursorRange<'dtb> {
 			inner.first_offset = Ord::min(inner.first_offset, cursor.offset);
 			inner.last_offset = Ord::max(inner.last_offset, cursor.offset);
 		}
+	}
+}
+
+impl<'dtb> PushDeserializedNode<'dtb> for CursorRange<'dtb> {
+	type Node = Node<'dtb>;
+
+	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) {
+		self.extend(core::iter::once(node));
 	}
 }
 

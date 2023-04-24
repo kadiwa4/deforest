@@ -25,8 +25,8 @@ enum ItemKind {
 ///
 /// - `#[dt_property]` (default) uses `DeserializeProperty`
 /// - `#[dt_child]` uses `DeserializeNode`
-/// - `#[dt_children]` uses `ExtendDeserializedNode` to collect items of type
-///   `Self::Node`; it is equivalent to `Extend<Self::Node>`
+/// - `#[dt_children]` uses `PushDeserializedNode` to collect items of type
+///   `Self::Node`; it is similar to `Extend<Self::Node>`
 ///
 /// `DeserializeNode::deserialize` is always used with an appropriate
 /// `NodeContext`.
@@ -96,7 +96,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				#item_name => {
 					let val;
 					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
-					<#ty as ::devicetree::ExtendDeserializedNode>::push_node(&mut this.#field_name, val, child_cx);
+					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx);
 				}
 			}),
 			ItemKind::ChildrenRest => {
@@ -104,7 +104,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				children_rest_expr = Some(quote! {{
 					let val;
 					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
-					<#ty as ::devicetree::ExtendDeserializedNode>::push_node(&mut this.#field_name, val, child_cx);
+					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx);
 				}});
 			}
 		};
