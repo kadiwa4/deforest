@@ -1,10 +1,11 @@
+use core::fmt::{self, Debug, Display, Formatter, Write};
+
+use fallible_iterator::FallibleIterator;
+
 use crate::{
 	blob::{Cursor, Devicetree, Error, Result, Token, TOKEN_SIZE},
 	util, DeserializeProperty, NodeContext,
 };
-use core::fmt::{self, Debug, Display, Formatter, Write};
-
-use fallible_iterator::FallibleIterator;
 
 /// A property contained in a [`Node`].
 #[derive(Clone, Copy)]
@@ -394,6 +395,7 @@ impl<'dtb> FallibleIterator for NodeItems<'dtb> {
 /// An iterator over the [`Property`]s contained in a node.
 ///
 /// This is currently more efficient than filtering the [`NodeItems`] manually.
+#[derive(Clone, Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct NodeProperties<'dtb> {
 	dt: &'dtb Devicetree,
@@ -441,6 +443,7 @@ impl<'dtb> FallibleIterator for NodeProperties<'dtb> {
 /// manually.
 ///
 /// Fused (see [`core::iter::FusedIterator`]).
+#[derive(Clone, Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct NodeChildren<'dtb>(NodeItems<'dtb>);
 
@@ -461,6 +464,20 @@ impl<'dtb> NodeChildren<'dtb> {
 	/// to determine if this iterator has not been advanced very much.
 	pub fn end_cursor(self) -> Result<Cursor> {
 		self.0.end_cursor()
+	}
+
+	/// Advances the iterator and passes the next node to the given closure.
+	///
+	/// The closure's second return value is a cursor pointing to the next token
+	/// after the current node.
+	pub fn walk_next<T>(
+		&mut self,
+		f: impl FnOnce(Node<'dtb>) -> Result<(T, Cursor)>,
+	) -> Result<Option<T>> {
+		let Some(child) = self.next()? else { return Ok(None) };
+		let (ret, cursor) = f(child)?;
+		self.0.set_cursor(cursor);
+		Ok(Some(ret))
 	}
 
 	/// Searches for a node whose name satisfies the predicate.

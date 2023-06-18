@@ -1,15 +1,9 @@
+use core::{cmp::Ordering, mem::size_of};
+
 use crate::{
 	blob::{Devicetree, Error, Item, Node, Property, Result},
-	util, DeserializeNode, NodeContext, PushDeserializedNode,
+	util,
 };
-use core::{
-	cmp::Ordering,
-	hash::{Hash, Hasher},
-	marker::PhantomData,
-	mem::size_of,
-};
-
-use fallible_iterator::FallibleIterator;
 
 pub(super) const TOKEN_SIZE: u32 = 4;
 
@@ -45,8 +39,8 @@ impl<'dtb> Token<'dtb> {
 /// [`NodeChildren`]: super::NodeChildren
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Cursor {
-	pub(super) depth: u32,
-	pub(super) offset: u32,
+	pub(crate) depth: u32,
+	pub(crate) offset: u32,
 }
 
 impl PartialOrd for Cursor {
@@ -82,114 +76,6 @@ impl Cursor {
 		blob.get(offset as usize..).ok_or(Error::UnexpectedEnd)?;
 		self.offset = offset;
 		Ok(())
-	}
-}
-
-/// A range of nodes, represented by cursors to them.
-///
-/// Do not use compare cursor ranges from different devicetrees.
-/// Only `extend` a range with nodes with the same valid node name from the same
-/// devicetree. (Cannot be used with `#[dt_children(rest)]`.)
-/// Empty ranges do not belong to any node name/devicetree.
-///
-/// Can be used with [`Devicetree::nodes_in_range`] or
-/// [`Devicetree::deserialize_in_range`] or by advancing cursors manually.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct CursorRange<'dtb>(pub(super) Option<CursorRangeInner<'dtb>>);
-
-#[derive(Clone, Copy, Debug, Eq)]
-pub(super) struct CursorRangeInner<'dtb> {
-	depth: u32,
-	first_offset: u32,
-	last_offset: u32,
-	filter_name: &'dtb str,
-}
-
-impl PartialEq for CursorRangeInner<'_> {
-	fn eq(&self, other: &Self) -> bool {
-		let ret = self.first_offset == other.first_offset && self.last_offset == other.last_offset;
-		if ret {
-			debug_assert_eq!(self.depth, other.depth);
-			debug_assert_eq!(self.filter_name, other.filter_name);
-		}
-		ret
-	}
-}
-
-impl Hash for CursorRangeInner<'_> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.first_offset.hash(state);
-		self.last_offset.hash(state);
-	}
-}
-
-impl<'dtb> CursorRange<'dtb> {
-	/// Default empty range.
-	pub const EMPTY: Self = Self(None);
-
-	/// Creates a new range spanning a single node.
-	pub fn new_single(node: Node<'dtb>) -> Result<Self> {
-		let cursor = node.start_cursor();
-		Ok(Self(Some(CursorRangeInner {
-			depth: cursor.depth,
-			first_offset: cursor.offset,
-			last_offset: cursor.offset,
-			filter_name: node.split_name()?.0,
-		})))
-	}
-
-	/// Determines if this range spans only a single node.
-	pub fn is_single(&self) -> bool {
-		self.0.map_or(false, |i| i.first_offset == i.last_offset)
-	}
-
-	/// Cursor pointing to the first node's [`Token`].
-	pub fn first(&self) -> Option<Cursor> {
-		let inner = self.0?;
-		Some(Cursor {
-			depth: inner.depth,
-			offset: inner.first_offset,
-		})
-	}
-
-	/// Cursor pointing to the last node's [`Token`].
-	pub fn last(&self) -> Option<Cursor> {
-		let inner = self.0?;
-		Some(Cursor {
-			depth: inner.depth,
-			offset: inner.last_offset,
-		})
-	}
-}
-
-impl<'dtb> Extend<Node<'dtb>> for CursorRange<'dtb> {
-	fn extend<T: IntoIterator<Item = Node<'dtb>>>(&mut self, iter: T) {
-		for node in iter {
-			let Some(ref mut inner) = self.0 else {
-				*self = Self::new_single(node).unwrap();
-				continue;
-			};
-			let cursor = node.start_cursor();
-			debug_assert_eq!(cursor.depth, inner.depth);
-			inner.first_offset = Ord::min(inner.first_offset, cursor.offset);
-			inner.last_offset = Ord::max(inner.last_offset, cursor.offset);
-		}
-	}
-}
-
-impl<'dtb> PushDeserializedNode<'dtb> for CursorRange<'dtb> {
-	type Node = Node<'dtb>;
-
-	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) {
-		self.extend(core::iter::once(node));
-	}
-}
-
-impl<'dtb> FromIterator<Node<'dtb>> for CursorRange<'dtb> {
-	fn from_iter<T: IntoIterator<Item = Node<'dtb>>>(iter: T) -> Self {
-		let mut this = Self::EMPTY;
-		this.extend(iter);
-		this
 	}
 }
 
@@ -310,100 +196,5 @@ impl Devicetree {
 			_ => return Err(Error::UnknownToken),
 		};
 		Ok(Some(token))
-	}
-
-	/// Iterator over the [`Node`]s in the range.
-	pub fn nodes_in_range<'dtb>(&'dtb self, range: CursorRange<'dtb>) -> NodesInRange<'dtb> {
-		NodesInRange { dt: self, range }
-	}
-
-	/// Iterator over the [`Node`]s in the range, with each node being parsed
-	/// into type `T`.
-	pub fn deserialize_in_range<'a, 'dtb, T: DeserializeNode<'dtb>>(
-		&'dtb self,
-		range: CursorRange<'dtb>,
-		cx: NodeContext<'a>,
-	) -> DeserializeInRange<'a, 'dtb, T> {
-		DeserializeInRange {
-			nodes: self.nodes_in_range(range),
-			cx,
-			_marker: PhantomData,
-		}
-	}
-}
-
-/// Iterator over the [`Node`]s in a range.
-/// Obtained from [`Devicetree::nodes_in_range`].
-#[derive(Clone, Debug)]
-#[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct NodesInRange<'dtb> {
-	dt: &'dtb Devicetree,
-	range: CursorRange<'dtb>,
-}
-
-impl<'dtb> NodesInRange<'dtb> {
-	/// Advances the iterator and passes the next node to the given closure.
-	///
-	/// The closure's second return value is a cursor pointing to the next token
-	/// after the node.
-	pub fn walk_next<T>(
-		&mut self,
-		mut f: impl FnMut(Node<'dtb>) -> crate::Result<(T, Cursor)>,
-	) -> crate::Result<Option<T>> {
-		let Some(inner) = self.range.0 else { return Ok(None) };
-		let mut cursor = Cursor {
-			depth: inner.depth,
-			offset: inner.first_offset,
-		};
-		loop {
-			if cursor.offset == inner.last_offset {
-				self.range = CursorRange::EMPTY;
-			}
-			let node = loop {
-				match self.dt.next_token(&mut cursor)? {
-					Some(Token::BeginNode(node)) => break node,
-					None | Some(Token::EndNode) => return Ok(None),
-					Some(Token::Property(_)) => (),
-				}
-			};
-
-			if node.split_name()?.0 == inner.filter_name {
-				let val;
-				(val, cursor) = f(node)?;
-				if let CursorRange(Some(ref mut inner)) = self.range {
-					inner.first_offset = cursor.offset;
-				}
-				return Ok(Some(val));
-			} else {
-				cursor = node.end_cursor()?;
-				if self.range == CursorRange::EMPTY {
-					return Ok(None);
-				}
-			}
-		}
-	}
-
-	/// The range of nodes that has not been visited yet.
-	pub fn remaining_range(&self) -> CursorRange<'dtb> {
-		self.range
-	}
-}
-
-/// Iterator over the [`Node`]s in a range, with each node being parsed into
-/// type `T`.
-#[derive(Clone, Debug)]
-#[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct DeserializeInRange<'a, 'dtb, T> {
-	pub nodes: NodesInRange<'dtb>,
-	pub cx: NodeContext<'a>,
-	_marker: PhantomData<fn() -> T>,
-}
-
-impl<'a, 'dtb, T: DeserializeNode<'dtb>> FallibleIterator for DeserializeInRange<'a, 'dtb, T> {
-	type Item = T;
-	type Error = crate::Error;
-
-	fn next(&mut self) -> core::result::Result<Option<Self::Item>, Self::Error> {
-		self.nodes.walk_next(|n| T::deserialize(&n, self.cx))
 	}
 }

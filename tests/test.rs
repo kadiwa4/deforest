@@ -1,10 +1,9 @@
 use devicetree::{
-	blob::{CursorRange, Devicetree},
+	blob::Devicetree,
 	fallible_iterator::FallibleIterator,
 	prop_value::{self, RegBlock},
 	DeserializeProperty, NodeContext,
 };
-use std::iter;
 
 const UNALIGNED_BLOB: &[u8] = include_bytes!("tree.dtb");
 const FORMATTED: &str = include_str!("formatted.txt");
@@ -98,19 +97,11 @@ fn multiple_children() {
 		let dt = Devicetree::from_slice(blob).unwrap();
 
 		let clocks_node = dt.get_node_strict(&["clocks"]).unwrap().unwrap();
-		let range: CursorRange<'_> = clocks_node
-			.get_children("clock")
-			.iterator()
-			.map(|res| res.unwrap())
-			.collect();
-		assert!(!range.is_single());
-		let mut iter = dt.nodes_in_range(range);
-		let iter = iter::from_fn(|| {
-			iter.walk_next(|n| Ok((n.clone(), n.end_cursor()?)))
-				.unwrap()
-		})
-		.filter_map(|n| {
-			n.get_property("clock-output-names")
+		let clock_cnt = clocks_node.get_children("clock").count().unwrap();
+		assert_eq!(clock_cnt, 7);
+		let iter = clocks_node.children().iterator().filter_map(|n| {
+			n.unwrap()
+				.get_property("clock-output-names")
 				.unwrap()
 				.map(|p| p.contextless_parse::<&str>().unwrap())
 		});
@@ -119,11 +110,10 @@ fn multiple_children() {
 			["core", "mmc", "uart0_pclk", "apb_pclk", "pwm", "osc"]
 		);
 
-		let range: CursorRange<'_> = clocks_node
+		let mut iter = clocks_node
 			.get_children("thermal")
 			.iterator()
-			.map(|res| res.unwrap())
-			.collect();
-		assert_eq!(range, CursorRange::EMPTY);
+			.map(|res| res.unwrap());
+		assert!(iter.next().is_none());
 	})
 }

@@ -9,12 +9,12 @@
 extern crate alloc;
 
 pub mod blob;
+pub mod node;
 pub mod prop_value;
 
 #[cfg(feature = "derive")]
 pub use devicetree_derive::*;
 
-use blob::{Cursor, Node, Property};
 use core::{
 	any::Any,
 	fmt::{self, Display, Formatter},
@@ -22,6 +22,8 @@ use core::{
 };
 
 use ascii::AsciiStr;
+
+use blob::{Cursor, Node, Property};
 
 /// Any error caused by this crate.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -240,19 +242,24 @@ impl<'dtb, T: DeserializeNode<'dtb>> DeserializeNode<'dtb> for Option<T> {
 	}
 }
 
+/// Types that can collect several devicetree nodes.
 pub trait PushDeserializedNode<'dtb> {
 	type Node: DeserializeNode<'dtb>;
 
+	/// Appends a node to the back of the collection.
+	///
+	/// This function has to be called with the nodes in the same order as they
+	/// appear in the devicetree, without skipping any qualified ones.
 	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>);
 }
 
 #[cfg(feature = "alloc")]
 mod alloc_impl {
-	use crate::{prop_value::RegBlock, *};
 	use alloc::{boxed::Box, string::String, vec::Vec};
-	use blob::Item;
 
 	use ::fallible_iterator::FallibleIterator;
+
+	use crate::{blob::Item, prop_value::RegBlock, *};
 
 	impl Path for [String] {
 		type ComponentsIter<'a> = iter::Map<slice::Iter<'a, String>, fn(&String) -> &str>

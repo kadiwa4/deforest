@@ -1,7 +1,4 @@
-use devicetree::{
-	blob::{Cursor, CursorRange},
-	prop_value, DeserializeNode,
-};
+use devicetree::{blob::Cursor, node::NamedRange, prop_value, DeserializeNode};
 
 #[derive(Default, DeserializeNode)]
 struct RootNode<'dtb> {
@@ -14,7 +11,7 @@ struct RootNode<'dtb> {
 	#[dt_child]
 	aliases: Option<Cursor>,
 	#[dt_children]
-	memory: CursorRange<'dtb>,
+	memory: NamedRange<'dtb>,
 	#[dt_child]
 	reserved_memory: Option<ReservedMemoryNode<'dtb>>,
 	#[dt_child]
@@ -60,7 +57,7 @@ struct CpusNode<'dtb> {
 	address_cells: prop_value::AddressCells,
 	size_cells: prop_value::SizeCells,
 	#[dt_children]
-	cpu: CursorRange<'dtb>,
+	cpu: NamedRange<'dtb>,
 }
 
 #[derive(Default, DeserializeNode)]

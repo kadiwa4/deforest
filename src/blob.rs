@@ -10,7 +10,6 @@ mod token;
 pub use item::*;
 pub use token::*;
 
-use crate::{util, DeserializeNode, NodeContext, Path};
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
 use core::{
@@ -21,6 +20,8 @@ use core::{
 };
 
 use fallible_iterator::FallibleIterator;
+
+use crate::{util, DeserializeNode, NodeContext, Path};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
