@@ -24,9 +24,9 @@ required-features = ["alloc", "derive"]
 [dependencies]
 ascii = { version = "1.1.0", default-features = false }
 devicetree_derive = { path = "devicetree_derive", optional = true }
-fallible-iterator = { version = "0.2.0", default-features = false }
+fallible-iterator = { version = "0.3.0", default-features = false }
 
 [features]
-alloc = []
+alloc = ["fallible-iterator/alloc"]
 derive = ["devicetree_derive"]
-std = ["alloc"]
+std = ["alloc", "fallible-iterator/std"]

@@ -14,6 +14,7 @@ pub mod prop_value;
 
 #[cfg(feature = "derive")]
 pub use devicetree_derive::*;
+pub use fallible_iterator;
 
 use core::{
 	any::Any,
@@ -474,28 +475,5 @@ pub mod util {
 	/// offset.
 	pub(crate) fn slice_get_with_len<T>(slice: &[T], offset: usize, len: usize) -> Option<&[T]> {
 		slice.get(offset..offset + len)
-	}
-}
-
-/// Crate `fallible_iterator`.
-pub mod fallible_iterator {
-	pub use fallible_iterator::*;
-
-	/// Creates a new iterator where each iteration calls the provided closure.
-	pub fn from_fn<T, E, F: FnMut() -> Result<Option<T>, E>>(f: F) -> FromFn<F> {
-		FromFn(f)
-	}
-
-	/// Iterator where each iteration calls the provided closure. Obtained from
-	/// [`from_fn`].
-	pub struct FromFn<F>(F);
-
-	impl<T, E, F: FnMut() -> Result<Option<T>, E>> FallibleIterator for FromFn<F> {
-		type Item = T;
-		type Error = E;
-
-		fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-			self.0()
-		}
 	}
 }
