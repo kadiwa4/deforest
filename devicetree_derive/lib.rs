@@ -96,7 +96,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				#item_name => {
 					let val;
 					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
-					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx);
+					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				}
 			}),
 			ItemKind::ChildrenRest => {
@@ -104,7 +104,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				children_rest_expr = Some(quote! {{
 					let val;
 					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
-					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx);
+					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				}});
 			}
 		};

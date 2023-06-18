@@ -35,8 +35,6 @@ impl<'dtb> Token<'dtb> {
 /// [`Devicetree::next_token`].
 ///
 /// Do not compare cursors from different devicetrees.
-///
-/// [`NodeChildren`]: super::NodeChildren
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Cursor {
 	pub(crate) depth: u32,
@@ -66,9 +64,9 @@ impl PartialEq for Cursor {
 }
 
 impl Cursor {
-	fn increase_offset(&mut self, add: usize, blob: &[u8]) -> Result<()> {
+	fn increase_offset(&mut self, add: u32, blob: &[u8]) -> Result<()> {
 		// basically u32::div_ceil(offset + add, 4) * 4
-		let offset = u32::checked_add(self.offset, add as u32)
+		let offset = u32::checked_add(self.offset, add)
 			.and_then(|offset| u32::checked_add(offset, TOKEN_SIZE - 1))
 			.ok_or(Error::UnexpectedEnd)?
 			& TOKEN_SIZE.wrapping_neg();
@@ -123,7 +121,7 @@ impl Devicetree {
 					let name = &blob[cursor.offset as usize..];
 					let name = util::get_c_str(name)?;
 
-					cursor.increase_offset(name.len() + 1, blob)?;
+					cursor.increase_offset(name.len() as u32 + 1, blob)?;
 					cursor.depth += 1;
 					Token::BeginNode(Node {
 						dt: self,
@@ -151,8 +149,8 @@ impl Devicetree {
 					cursor.offset += PROP_HEADER_SIZE as u32;
 					let offset = cursor.offset as usize;
 
-					let len = u32::from_be(header.len) as usize;
-					let value = util::slice_get_with_len(blob, offset, len)
+					let len = u32::from_be(header.len);
+					let value = util::slice_get_with_len(blob, offset, len as usize)
 						.ok_or(Error::InvalidPropertyHeader)?;
 
 					cursor.increase_offset(len, blob)?;

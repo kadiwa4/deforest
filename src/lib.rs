@@ -19,10 +19,13 @@ pub use fallible_iterator;
 use core::{
 	any::Any,
 	fmt::{self, Display, Formatter},
-	iter, slice,
+	iter,
+	mem::size_of,
+	slice,
 };
 
 use ascii::AsciiStr;
+use fallible_iterator::FallibleIterator;
 
 use blob::{Cursor, Node, Property};
 
@@ -33,6 +36,7 @@ pub enum Error {
 	/// Not produced by this crate.
 	Unknown,
 	Blob(blob::Error),
+	InvalidNodeName,
 	InvalidPath,
 	TooManyCells,
 	UnsuitableProperty,
@@ -45,6 +49,7 @@ impl Display for Error {
 		let description = match self {
 			Unknown => "unknown",
 			Blob(err) => return Display::fmt(err, f),
+			InvalidNodeName => "invalid node name",
 			InvalidPath => "invalid path",
 			TooManyCells => "too many cells",
 			UnsuitableProperty => "unsuitable property",
@@ -114,6 +119,47 @@ impl Path for str {
 			components.next();
 		}
 		Ok(components)
+	}
+}
+
+/// An entry from a blob's memory reservation block, obtained from
+/// [`ReserveEntries`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ReserveEntry {
+	pub address: u64,
+	pub size: u64,
+}
+
+/// An iterator over the [`ReserveEntry`] from a [`Devicetree`] blob's memory
+/// reservation block.
+///
+/// [`Devicetree`]: blob::Devicetree
+#[derive(Clone)]
+pub struct ReserveEntries<'dtb> {
+	pub(crate) blob: &'dtb [u64],
+}
+
+impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {
+	type Item = ReserveEntry;
+	type Error = crate::Error;
+
+	fn next(&mut self) -> crate::Result<Option<Self::Item>, Self::Error> {
+		const RESERVE_ENTRY_U64_SIZE: usize = size_of::<ReserveEntry>() / 8;
+
+		let blob = self
+			.blob
+			.get(..RESERVE_ENTRY_U64_SIZE)
+			.ok_or(blob::Error::UnexpectedEnd)?;
+		self.blob = &self.blob[RESERVE_ENTRY_U64_SIZE..];
+
+		let address = blob[0];
+		let size = blob[1];
+
+		let entry = (address != 0 || size != 0).then(|| ReserveEntry {
+			address: u64::from_be(address),
+			size: u64::from_be(size),
+		});
+		Ok(entry)
 	}
 }
 
@@ -251,7 +297,7 @@ pub trait PushDeserializedNode<'dtb> {
 	///
 	/// This function has to be called with the nodes in the same order as they
 	/// appear in the devicetree, without skipping any qualified ones.
-	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>);
+	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) -> Result<()>;
 }
 
 #[cfg(feature = "alloc")]
@@ -385,8 +431,9 @@ mod alloc_impl {
 	impl<'dtb, A: DeserializeNode<'dtb>> PushDeserializedNode<'dtb> for Vec<A> {
 		type Node = A;
 
-		fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) {
+		fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) -> Result<()> {
 			self.push(node);
+			Ok(())
 		}
 	}
 
@@ -417,17 +464,17 @@ pub mod util {
 	///
 	/// # Examples
 	/// ```
-	/// # use devicetree::{blob::Error, util::split_node_name};
+	/// # use devicetree::{util::split_node_name, Error};
 	/// assert_eq!(split_node_name("compatible"), Ok(("compatible", None)));
 	/// assert_eq!(split_node_name("clock@0"), Ok(("clock", Some("0"))));
 	/// assert_eq!(split_node_name("a@b@2"), Err(Error::InvalidNodeName));
 	/// ```
-	pub fn split_node_name(name: &str) -> Result<(&str, Option<&str>), blob::Error> {
+	pub fn split_node_name(name: &str) -> Result<(&str, Option<&str>)> {
 		let mut parts = name.split('@');
 		let node_name = parts.next().unwrap();
 		let unit_address = parts.next();
 		if parts.next().is_some() {
-			return Err(blob::Error::InvalidNodeName);
+			return Err(Error::InvalidNodeName);
 		}
 		Ok((node_name, unit_address))
 	}

@@ -99,9 +99,8 @@ fn multiple_children() {
 		let clocks_node = dt.get_node_strict(&["clocks"]).unwrap().unwrap();
 		let clock_cnt = clocks_node.get_children("clock").count().unwrap();
 		assert_eq!(clock_cnt, 7);
-		let iter = clocks_node.children().iterator().filter_map(|n| {
-			n.unwrap()
-				.get_property("clock-output-names")
+		let iter = clocks_node.children().unwrap().filter_map(|n| {
+			n.get_property("clock-output-names")
 				.unwrap()
 				.map(|p| p.contextless_parse::<&str>().unwrap())
 		});

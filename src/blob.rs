@@ -19,16 +19,13 @@ use core::{
 	slice,
 };
 
-use fallible_iterator::FallibleIterator;
-
-use crate::{util, DeserializeNode, NodeContext, Path};
+use crate::{util, DeserializeNode, NodeContext, Path, ReserveEntries};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
 	BlockOutOfBounds,
 	IncompatibleVersion,
-	InvalidNodeName,
 	InvalidPropertyHeader,
 	InvalidRootNode,
 	InvalidString,
@@ -48,7 +45,6 @@ impl Display for Error {
 		let description = match *self {
 			BlockOutOfBounds => "block out of bounds",
 			IncompatibleVersion => "incompatible devicetree version",
-			InvalidNodeName => "invalid node name",
 			InvalidPropertyHeader => "invalid property header",
 			InvalidRootNode => "invalid root node",
 			InvalidString => "invalid string",
@@ -369,44 +365,5 @@ impl<'a> From<&'a Devicetree> for &'a [u64] {
 impl<'a> From<&'a Devicetree> for Box<Devicetree> {
 	fn from(dt: &'a Devicetree) -> Self {
 		unsafe { Devicetree::from_box_unchecked(dt.blob.into()) }
-	}
-}
-
-/// An entry from a blob's memory reservation block, obtained from
-/// [`ReserveEntries`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ReserveEntry {
-	pub address: u64,
-	pub size: u64,
-}
-
-/// An iterator over the [`ReserveEntry`] from a [`Devicetree`] blob's memory
-/// reservation block.
-#[derive(Clone)]
-pub struct ReserveEntries<'dtb> {
-	pub(crate) blob: &'dtb [u64],
-}
-
-impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {
-	type Item = ReserveEntry;
-	type Error = Error;
-
-	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		const RESERVE_ENTRY_U64_SIZE: usize = size_of::<ReserveEntry>() / 8;
-
-		let blob = self
-			.blob
-			.get(..RESERVE_ENTRY_U64_SIZE)
-			.ok_or(Error::UnexpectedEnd)?;
-		self.blob = &self.blob[RESERVE_ENTRY_U64_SIZE..];
-
-		let address = blob[0];
-		let size = blob[1];
-
-		let entry = (address != 0 || size != 0).then(|| ReserveEntry {
-			address: u64::from_be(address),
-			size: u64::from_be(size),
-		});
-		Ok(entry)
 	}
 }

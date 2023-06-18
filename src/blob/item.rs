@@ -3,8 +3,8 @@ use core::fmt::{self, Debug, Display, Formatter, Write};
 use fallible_iterator::FallibleIterator;
 
 use crate::{
-	blob::{Cursor, Devicetree, Error, Result, Token, TOKEN_SIZE},
-	util, DeserializeProperty, NodeContext,
+	blob::{self, Cursor, Devicetree, Token, TOKEN_SIZE},
+	node, util, DeserializeProperty, NodeContext, Result,
 };
 
 /// A property contained in a [`Node`].
@@ -19,7 +19,7 @@ impl<'dtb> Property<'dtb> {
 	///
 	/// # Errors
 	/// Fails if the string is invalid.
-	pub fn name(self) -> Result<&'dtb str> {
+	pub fn name(self) -> blob::Result<&'dtb str> {
 		util::get_c_str(self.name_blob)
 	}
 
@@ -31,7 +31,7 @@ impl<'dtb> Property<'dtb> {
 
 	/// Parses the value. Equivalent to `DeserializeProperty` except that the
 	/// default [`NodeContext`] is used.
-	pub fn contextless_parse<T: DeserializeProperty<'dtb>>(self) -> crate::Result<T> {
+	pub fn contextless_parse<T: DeserializeProperty<'dtb>>(self) -> Result<T> {
 		T::deserialize(self, NodeContext::default())
 	}
 }
@@ -115,9 +115,9 @@ impl<'dtb> Display for Property<'dtb> {
 /// It contains [`Property`]s and child nodes.
 #[derive(Clone, Debug)]
 pub struct Node<'dtb> {
-	pub(super) dt: &'dtb Devicetree,
-	pub(super) name: &'dtb str,
-	pub(super) contents: Cursor,
+	pub(crate) dt: &'dtb Devicetree,
+	pub(crate) name: &'dtb str,
+	pub(crate) contents: Cursor,
 }
 
 impl<'dtb> Node<'dtb> {
@@ -180,31 +180,34 @@ impl<'dtb> Node<'dtb> {
 	///
 	/// In compliant devicetrees, the properties always come before the child
 	/// nodes.
-	pub fn items(&self) -> NodeItems<'dtb> {
-		NodeItems::new(self, self.contents)
+	pub fn items(&self) -> node::Items<'dtb> {
+		node::Items::new(self, self.contents)
 	}
 
 	/// Iterator over the [`Property`]s contained in the node.
 	///
-	/// This is currently more efficient than filtering the [`NodeItems`]
-	/// manually.
-	pub fn properties(&self) -> NodeProperties<'dtb> {
-		NodeProperties::new(self.dt, self.contents)
+	/// This is currently more efficient than filtering the [`Items`] manually.
+	///
+	/// [`Items`]: node::Items
+	pub fn properties(&self) -> node::Properties<'dtb> {
+		node::Properties::new(self.dt, self.contents)
 	}
 
 	/// An iterator over the child [`Node`]s contained in a node.
 	///
-	/// This is currently not any more efficient than filtering the
-	/// [`NodeItems`] manually.
+	/// This is currently not any more efficient than filtering the [`Items`]
+	/// manually.
 	///
 	/// Fused (see [`core::iter::FusedIterator`]).
-	pub fn children(&self) -> NodeChildren<'dtb> {
-		NodeChildren(NodeItems::new(self, self.contents))
+	///
+	/// [`Items`]: node::Items
+	pub fn children(&self) -> node::Children<'dtb> {
+		node::Children::new(self, self.contents)
 	}
 
 	/// Finds a contained property by name.
 	pub fn get_property(&self, name: &str) -> Result<Option<Property<'dtb>>> {
-		NodeProperties::new(self.dt, self.contents).find_by_name(|n| n == name)
+		node::Properties::new(self.dt, self.contents).find_by_name(|n| n == name)
 	}
 
 	/// Finds a child node by (loosely-matching) name.
@@ -214,7 +217,7 @@ impl<'dtb> Node<'dtb> {
 	/// (the part starting with an `@`) can be left out. If it is, the node name
 	/// has to be unambiguous.
 	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
-		let mut iter = NodeChildren(NodeItems::new(self, self.contents));
+		let mut iter = node::Children::new(self, self.contents);
 		if util::split_node_name(name)?.1.is_some() {
 			iter.find(|n| Ok(n.name() == name))
 		} else if let Some((candidate, (_, candidate_addr))) = (&mut iter)
@@ -237,7 +240,7 @@ impl<'dtb> Node<'dtb> {
 	/// The input string has to match the node name exactly; the unit address
 	/// (the part starting with an `@`) cannot be left out.
 	pub fn get_child_strict(&self, name: &str) -> Result<Option<Node<'dtb>>> {
-		NodeChildren(NodeItems::new(self, self.contents)).find_by_name(|n| n == name)
+		node::Children::new(self, self.contents).find_by_name(|n| n == name)
 	}
 
 	/// Finds child nodes by (loosely-matching) name.
@@ -246,9 +249,9 @@ impl<'dtb> Node<'dtb> {
 	pub fn get_children<'n>(
 		&self,
 		name: &'n str,
-	) -> fallible_iterator::Filter<NodeChildren<'dtb>, impl FnMut(&Node<'dtb>) -> Result<bool> + 'n>
+	) -> fallible_iterator::Filter<node::Children<'dtb>, impl FnMut(&Node<'dtb>) -> Result<bool> + 'n>
 	{
-		NodeChildren(NodeItems::new(self, self.contents))
+		node::Children::new(self, self.contents)
 			.filter(move |n| n.split_name().map(|(n, _)| n == name))
 	}
 }
@@ -320,200 +323,10 @@ impl<'dtb> Item<'dtb> {
 	///
 	/// # Errors
 	/// Fails if this is a property and the string is invalid.
-	pub fn name(self) -> Result<&'dtb str> {
+	pub fn name(self) -> blob::Result<&'dtb str> {
 		match self {
 			Self::Property(prop) => prop.name(),
 			Self::Child(node) => Ok(node.name()),
 		}
-	}
-}
-
-/// An iterator over the [`Item`]s ([`Property`]s and child [`Node`]s)
-/// contained in a node.
-///
-/// Fused (see [`core::iter::FusedIterator`]).
-///
-/// In compliant devicetrees, the properties always come before the child nodes.
-#[derive(Clone, Debug)]
-#[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct NodeItems<'dtb> {
-	dt: &'dtb Devicetree,
-	at_depth: u32,
-	pub(crate) cursor: Cursor,
-}
-
-impl<'dtb> NodeItems<'dtb> {
-	/// Creates a new iterator over the [`Item`]s contained in a node.
-	///
-	/// The cursor has to be inside the node.
-	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
-		debug_assert!(node.contents <= cursor && node.contents.depth <= cursor.depth);
-		Self {
-			dt: node.dt,
-			at_depth: node.contents.depth,
-			cursor,
-		}
-	}
-
-	/// The cursor has to be inside the node.
-	pub fn set_cursor(&mut self, cursor: Cursor) {
-		debug_assert!(self.at_depth <= cursor.depth);
-		self.cursor = cursor;
-	}
-
-	/// A cursor pointing to the next [`Token`] after this node. Most expensive
-	/// to determine if this iterator has not been advanced very much.
-	pub fn end_cursor(mut self) -> Result<Cursor> {
-		while self.next()?.is_some() {}
-		Ok(self.cursor)
-	}
-
-	// Hidden because the exact behavior of this iterator could change.
-	// Use `end_cursor` instead; this iterator is fused.
-	#[doc(hidden)]
-	pub fn _cursor_(self) -> Cursor {
-		self.cursor
-	}
-}
-
-impl<'dtb> FallibleIterator for NodeItems<'dtb> {
-	type Item = Item<'dtb>;
-	type Error = Error;
-
-	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		while self.cursor.depth >= self.at_depth {
-			let token_depth = self.cursor.depth;
-			let Some(token) = self.dt.next_token(&mut self.cursor)? else { return Ok(None) };
-			if token_depth == self.at_depth {
-				return Ok(token.into_item());
-			}
-		}
-		Ok(None)
-	}
-}
-
-/// An iterator over the [`Property`]s contained in a node.
-///
-/// This is currently more efficient than filtering the [`NodeItems`] manually.
-#[derive(Clone, Debug)]
-#[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct NodeProperties<'dtb> {
-	dt: &'dtb Devicetree,
-	cursor: Cursor,
-}
-
-impl<'dtb> NodeProperties<'dtb> {
-	/// Creates an iterator over the [`Property`]s contained in a node.
-	///
-	/// The cursor has to be inside the node.
-	pub fn new(dt: &'dtb Devicetree, cursor: Cursor) -> Self {
-		Self { dt, cursor }
-	}
-
-	/// Cursor pointing to the next [`Token`].
-	pub fn cursor(&self) -> Cursor {
-		self.cursor
-	}
-
-	/// Finds a contained property by name.
-	pub fn find_by_name(
-		&mut self,
-		mut predicate: impl FnMut(&str) -> bool,
-	) -> Result<Option<Property<'dtb>>> {
-		self.find(|p| p.name().map(&mut predicate))
-	}
-}
-
-impl<'dtb> FallibleIterator for NodeProperties<'dtb> {
-	type Item = Property<'dtb>;
-	type Error = Error;
-
-	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		if let Some(Token::Property(prop)) = self.dt.next_token(&mut self.cursor)? {
-			Ok(Some(prop))
-		} else {
-			Ok(None)
-		}
-	}
-}
-
-/// An iterator over the child [`Node`]s contained in a node.
-///
-/// This is currently not any more efficient than filtering the [`NodeItems`]
-/// manually.
-///
-/// Fused (see [`core::iter::FusedIterator`]).
-#[derive(Clone, Debug)]
-#[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct NodeChildren<'dtb>(NodeItems<'dtb>);
-
-impl<'dtb> NodeChildren<'dtb> {
-	/// Creates an iterator over the child [`Node`]s contained in a node.
-	///
-	/// The cursor has to be inside the node.
-	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
-		Self(NodeItems::new(node, cursor))
-	}
-
-	/// The cursor has to be inside the node.
-	pub fn set_cursor(&mut self, cursor: Cursor) {
-		self.0.set_cursor(cursor);
-	}
-
-	/// A cursor pointing to the next [`Token`] after this node. Most expensive
-	/// to determine if this iterator has not been advanced very much.
-	pub fn end_cursor(self) -> Result<Cursor> {
-		self.0.end_cursor()
-	}
-
-	/// Advances the iterator and passes the next node to the given closure.
-	///
-	/// The closure's second return value is a cursor pointing to the next token
-	/// after the current node.
-	pub fn walk_next<T>(
-		&mut self,
-		f: impl FnOnce(Node<'dtb>) -> Result<(T, Cursor)>,
-	) -> Result<Option<T>> {
-		let Some(child) = self.next()? else { return Ok(None) };
-		let (ret, cursor) = f(child)?;
-		self.0.set_cursor(cursor);
-		Ok(Some(ret))
-	}
-
-	/// Searches for a node whose name satisfies the predicate.
-	pub fn find_by_name(
-		&mut self,
-		mut predicate: impl FnMut(&str) -> bool,
-	) -> Result<Option<Node<'dtb>>> {
-		self.find(|n| Ok(predicate(n.name())))
-	}
-
-	/// Searches for a node whose split name satisfies the predicate.
-	pub fn find_by_split_name(
-		&mut self,
-		mut predicate: impl FnMut(&str, Option<&str>) -> bool,
-	) -> Result<Option<Node<'dtb>>> {
-		self.find(|n| n.split_name().map(|(n, a)| predicate(n, a)))
-	}
-
-	/// Creates an iterator which uses a closure to determine if a node should
-	/// be yielded. The predicate takes the node's split name as input.
-	pub fn filter_by_split_name(
-		&mut self,
-		mut predicate: impl FnMut(&str, Option<&str>) -> bool,
-	) -> fallible_iterator::Filter<&mut Self, impl FnMut(&Node<'dtb>) -> Result<bool>> {
-		self.filter(move |n| n.split_name().map(|(n, a)| predicate(n, a)))
-	}
-}
-
-impl<'dtb> FallibleIterator for NodeChildren<'dtb> {
-	type Item = Node<'dtb>;
-	type Error = Error;
-
-	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		self.0.find_map(|i| match i {
-			Item::Property(_) => Ok(None),
-			Item::Child(node) => Ok(Some(node)),
-		})
 	}
 }
