@@ -4,22 +4,22 @@
 //! made of [`Token`]s. You can either iterate over them directly using
 //! [`Devicetree::next_token`] or make use of [`Node`]s and [`Property`]s.
 
-mod item;
+pub mod node;
 mod token;
 
-pub use item::*;
+pub use node::Node;
 pub use token::*;
 
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
 use core::{
-	fmt::{self, Debug, Display, Formatter},
+	fmt::{self, Debug, Display, Formatter, Write},
 	mem::{self, size_of, size_of_val},
 	ptr::NonNull,
 	slice,
 };
 
-use crate::{util, DeserializeNode, NodeContext, Path, ReserveEntries};
+use crate::{util, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -365,5 +365,129 @@ impl<'a> From<&'a Devicetree> for &'a [u64] {
 impl<'a> From<&'a Devicetree> for Box<Devicetree> {
 	fn from(dt: &'a Devicetree) -> Self {
 		unsafe { Devicetree::from_box_unchecked(dt.blob.into()) }
+	}
+}
+
+/// A property contained in a [`Node`].
+#[derive(Clone, Copy)]
+pub struct Property<'dtb> {
+	name_blob: &'dtb [u8],
+	value: &'dtb [u8],
+}
+
+impl<'dtb> Property<'dtb> {
+	/// The property's name.
+	///
+	/// # Errors
+	/// Fails if the string is invalid.
+	pub fn name(self) -> Result<&'dtb str> {
+		util::get_c_str(self.name_blob)
+	}
+
+	/// The property's value.
+	pub fn value(self) -> &'dtb [u8] {
+		debug_assert_eq!(self.value.as_ptr() as usize % 4, 0);
+		self.value
+	}
+
+	/// Parses the value. Equivalent to `DeserializeProperty` except that the
+	/// default [`NodeContext`] is used.
+	pub fn contextless_parse<T: DeserializeProperty<'dtb>>(self) -> crate::Result<T> {
+		T::deserialize(self, NodeContext::default())
+	}
+}
+
+impl<'dtb> Debug for Property<'dtb> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Property")
+			.field("name", &self.name())
+			.field("value", &self.value)
+			.finish()
+	}
+}
+
+impl<'dtb> Display for Property<'dtb> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		const HEX_STRING: &[u8] = b"0123456789abcdef";
+
+		struct HexArray<const N: usize>([u8; N]);
+
+		impl<const N: usize> Display for HexArray<N> {
+			fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+				let mut buf = [(0, 0); N];
+				for (out, n) in core::iter::zip(&mut buf, self.0) {
+					out.0 = HEX_STRING[n as usize >> 4];
+					out.1 = HEX_STRING[n as usize & 0x0f];
+				}
+				unsafe {
+					let buf = core::slice::from_raw_parts(&buf as *const _ as *const u8, N * 2);
+					f.write_str(core::str::from_utf8_unchecked(buf))
+				}
+			}
+		}
+
+		f.write_str(self.name().map_err(|_| fmt::Error)?)?;
+		if let [ref rest @ .., last_byte] = *self.value {
+			f.write_str(" = ")?;
+			let is_strings = last_byte == 0 && {
+				// an all-zero value shouldn't be displayed as a bunch of empty strings
+				let mut prev_was_printing_char = false;
+				rest.iter().all(|&b| {
+					match b {
+						0 if prev_was_printing_char => prev_was_printing_char = false,
+						b' '..=b'~' => prev_was_printing_char = true,
+						_ => return false,
+					}
+					true
+				}) && prev_was_printing_char
+			};
+			if is_strings {
+				f.write_char('"')?;
+				for &b in rest {
+					if b == 0 {
+						f.write_str("\", \"")?;
+					} else {
+						f.write_char(b as char)?;
+					};
+				}
+				f.write_char('"')?;
+			} else {
+				f.write_char('[')?;
+				let len = self.value.len();
+				if len % 4 == 0 {
+					for bytes in rest.chunks_exact(4) {
+						write!(f, "{} ", HexArray(<[u8; 4]>::try_from(bytes).unwrap()))?;
+					}
+					// last byte is written below
+					HexArray(<[u8; 3]>::try_from(&rest[len - 4..]).unwrap()).fmt(f)?;
+				} else {
+					for &b in rest {
+						write!(f, "{} ", HexArray([b]))?;
+					}
+				}
+				write!(f, "{}]", HexArray([last_byte]))?;
+			}
+		}
+		f.write_char(';')
+	}
+}
+
+/// Either a property or a node.
+#[derive(Clone, Debug)]
+pub enum Item<'dtb> {
+	Property(Property<'dtb>),
+	Child(Node<'dtb>),
+}
+
+impl<'dtb> Item<'dtb> {
+	/// The property's name.
+	///
+	/// # Errors
+	/// Fails if this is a property and the string is invalid.
+	pub fn name(self) -> Result<&'dtb str> {
+		match self {
+			Self::Property(prop) => prop.name(),
+			Self::Child(node) => Ok(node.name()),
+		}
 	}
 }

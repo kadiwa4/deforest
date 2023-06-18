@@ -1,4 +1,7 @@
-use devicetree::{blob::Cursor, node::NamedRange, prop_value, DeserializeNode};
+use devicetree::{
+	blob::{node::NamedRange, Cursor},
+	prop_value, DeserializeNode,
+};
 
 #[derive(Default, DeserializeNode)]
 struct RootNode<'dtb> {

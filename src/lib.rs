@@ -9,7 +9,6 @@
 extern crate alloc;
 
 pub mod blob;
-pub mod node;
 pub mod prop_value;
 
 #[cfg(feature = "derive")]
@@ -136,7 +135,7 @@ pub struct ReserveEntry {
 /// [`Devicetree`]: blob::Devicetree
 #[derive(Clone)]
 pub struct ReserveEntries<'dtb> {
-	pub(crate) blob: &'dtb [u64],
+	blob: &'dtb [u64],
 }
 
 impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {

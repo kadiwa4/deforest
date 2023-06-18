@@ -37,8 +37,8 @@ impl<'dtb> Token<'dtb> {
 /// Do not compare cursors from different devicetrees.
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Cursor {
-	pub(crate) depth: u32,
-	pub(crate) offset: u32,
+	pub(super) depth: u32,
+	pub(super) offset: u32,
 }
 
 impl PartialOrd for Cursor {
