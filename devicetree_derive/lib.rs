@@ -37,18 +37,8 @@ enum ItemKind {
 pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let strct: ItemStruct = syn::parse(tokens).expect("invalid struct");
 
-	let update_address_cells_stmts = quote! {
-		let ::devicetree::prop_value::AddressCells(address_cells) = ::devicetree::DeserializeProperty::deserialize(prop, cx)?;
-		child_cx.address_cells = address_cells;
-	};
-	let update_size_cells_stmts = quote! {
-		let ::devicetree::prop_value::SizeCells(size_cells) = ::devicetree::DeserializeProperty::deserialize(prop, cx)?;
-		child_cx.size_cells = size_cells;
-	};
-
 	let mut prop_match_arms = TokenStream::new();
 	let (mut child_match_arms, mut children_rest_expr) = (TokenStream::new(), None);
-	let (mut have_address_cells, mut have_size_cells) = (false, false);
 	for (idx, field) in strct.fields.into_iter().enumerate() {
 		let attr_info = parse_field_attrs(&field.attrs, || match field.ident {
 			None => idx.to_string(),
@@ -71,31 +61,21 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		let ty = field.ty;
 		match kind {
 			ItemKind::Property => {
-				let update_cx = match &item_name[..] {
-					"#address-cells" => {
-						have_address_cells = true;
-						Some(&update_address_cells_stmts)
-					}
-					"#size-cells" => {
-						have_size_cells = true;
-						Some(&update_size_cells_stmts)
-					}
-					_ => None,
-				};
 				prop_match_arms.extend(quote! {
 					#item_name => {
-						this.#field_name = <#ty as ::devicetree::DeserializeProperty<'dtb>>::deserialize(prop, cx)?;
-						#update_cx
+						this.#field_name = <#ty as ::devicetree::DeserializeProperty<'dtb>>::deserialize(prop, cx)?
 					}
 				});
 			},
 			ItemKind::Child => child_match_arms.extend(quote! {
-				#item_name => (this.#field_name, cursor) = <#ty as ::devicetree::DeserializeNode<'dtb>>::deserialize(&node, child_cx)?,
+				#item_name => {
+					(this.#field_name, *cursor) = <#ty as ::devicetree::DeserializeNode<'dtb>>::deserialize(&child, child_cx)?
+				}
 			}),
 			ItemKind::Children => child_match_arms.extend(quote! {
 				#item_name => {
 					let val;
-					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
+					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
 					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				}
 			}),
@@ -103,21 +83,11 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				assert!(children_rest_expr.is_none(), "multilple fields with attribute `#[dt_children(rest)]`");
 				children_rest_expr = Some(quote! {{
 					let val;
-					(val, cursor) = ::devicetree::DeserializeNode::deserialize(&node, child_cx)?;
+					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
 					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				}});
 			}
 		};
-	}
-	if !have_address_cells {
-		prop_match_arms.extend(quote! {
-			"#address-cells" => { #update_address_cells_stmts }
-		});
-	}
-	if !have_size_cells {
-		prop_match_arms.extend(quote! {
-			"#size-cells" => { #update_size_cells_stmts }
-		});
 	}
 
 	let name = strct.ident;
@@ -137,29 +107,48 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			impl_generics = quote! { <'dtb> };
 		}
 	}
-	let child_stmts = if child_match_arms.is_empty() {
-		if let Some(children_rest_expr) = children_rest_expr {
-			quote! {
-				let cursor;
-				#children_rest_expr
-				items.set_cursor(cursor);
-			}
+	let cx_deserialize_node = |child_stmts| quote! {
+		let cursor = cx.deserialize_node(
+			blob_node,
+			|name, prop| {
+				match name {
+					#prop_match_arms
+					_ => (),
+				}
+				Ok(())
+			},
+			|child, child_cx, cursor| {
+				#child_stmts
+			},
+		)?;
+	};
+	let deserialize_stmts = if child_match_arms.is_empty() {
+		if let Some(children_rest_block) = children_rest_expr {
+			cx_deserialize_node(children_rest_block)
 		} else {
+			// No children need to be parsed
 			quote! {
-				_ = node;
-				return ::devicetree::Result::Ok((this, items.end_cursor()?))
+				let mut items = blob_node.items();
+				while let ::core::option::Option::Some(::devicetree::blob::Item::Property(prop)) =
+					::devicetree::fallible_iterator::FallibleIterator::next(&mut items)?
+				{
+					match prop.name()? {
+						#prop_match_arms
+						_ => (),
+					}
+				}
+				let cursor = items.end_cursor()?;
 			}
 		}
 	} else {
-		let children_rest_expr = children_rest_expr.unwrap_or_else(|| quote! { continue, });
-		quote! {
-			let cursor;
-			match node.split_name()?.0 {
+		let children_rest_expr = children_rest_expr.unwrap_or_else(|| quote! { (), });
+		cx_deserialize_node(quote! {
+			match child.split_name()?.0 {
 				#child_match_arms
 				_ => #children_rest_expr
 			}
-			items.set_cursor(cursor);
-		}
+			Ok(())
+		})
 	};
 	quote! {
 		impl #impl_generics ::devicetree::DeserializeNode<'dtb> for #name #ty_generics #where_clause {
@@ -168,24 +157,8 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				cx: ::devicetree::NodeContext<'_>,
 			) -> ::devicetree::Result<(Self, ::devicetree::blob::Cursor)> {
 				let mut this: Self = ::core::default::Default::default();
-				let mut child_cx: ::devicetree::NodeContext = ::core::default::Default::default();
-				child_cx.custom = cx.custom;
-
-				let mut items = blob_node.items();
-				while let ::core::option::Option::Some(item) =
-					::devicetree::fallible_iterator::FallibleIterator::next(&mut items)?
-				{
-					match item {
-						::devicetree::blob::Item::Property(prop) => match prop.name()? {
-							#prop_match_arms
-							_ => (),
-						},
-						::devicetree::blob::Item::Child(node) => {
-							#child_stmts
-						}
-					}
-				}
-				::devicetree::Result::Ok((this, items._cursor_()))
+				#deserialize_stmts
+				::devicetree::Result::Ok((this, cursor))
 			}
 		}
 	}

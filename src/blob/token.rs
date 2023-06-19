@@ -182,7 +182,7 @@ impl Devicetree {
 		else {
 			return Ok(None)
 		};
-		let token = unsafe { *(token as *const _ as *const u32) };
+		let token = u32::from_ne_bytes(token.try_into().unwrap());
 
 		cursor.offset += TOKEN_SIZE;
 		let token = match token {

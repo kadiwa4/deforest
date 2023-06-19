@@ -300,6 +300,7 @@ impl Devicetree {
 	/// Gets a node from the struct block by (loosely-matching) path.
 	/// Try using [`Self::get_node_strict`] instead.
 	///
+	/// Doesn't respect `aliases`.
 	/// The components need not match the node names exactly; the unit address
 	/// (the part starting with an `@`) can be left out. If it is, the node name
 	/// has to be unambiguous.

@@ -26,7 +26,7 @@ use core::{
 use ascii::AsciiStr;
 use fallible_iterator::FallibleIterator;
 
-use blob::{Cursor, Node, Property};
+use blob::{Cursor, Item, Node, Property};
 
 /// Any error caused by this crate.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -180,6 +180,53 @@ impl Default for NodeContext<'_> {
 			address_cells: prop_value::AddressCells::default().0,
 			size_cells: prop_value::SizeCells::default().0,
 		}
+	}
+}
+
+impl<'a> NodeContext<'a> {
+	/// Helps you deserialize a node by creating the `NodeContext` for the child
+	/// nodes for you.
+	///
+	/// `f_prop` is called with the name of each property and that property.
+	///
+	/// `f_child` is called with each node, the new `NodeContext` and a mutable
+	/// reference to a cursor. The cursor points to that child node, but the
+	/// function has to replace it with a cursor which points to next token
+	/// after that child.
+	pub fn deserialize_node<'dtb>(
+		self,
+		blob_node: &Node<'dtb>,
+		mut f_prop: impl FnMut(&'dtb str, Property<'dtb>) -> Result<()>,
+		mut f_child: impl FnMut(Node<'dtb>, Self, &mut Cursor) -> Result<()>,
+	) -> Result<Cursor> {
+		let mut child_cx = Self {
+			custom: self.custom,
+			..Self::default()
+		};
+
+		let mut items = blob_node.items();
+		while let Some(item) = items.next()? {
+			match item {
+				Item::Property(prop) => {
+					let name = prop.name()?;
+					match name {
+						"#address-cells" => {
+							child_cx.address_cells =
+								prop_value::AddressCells::deserialize(prop, self)?.0
+						}
+						"#size-cells" => {
+							child_cx.size_cells = prop_value::SizeCells::deserialize(prop, self)?.0
+						}
+						_ => (),
+					}
+					f_prop(name, prop)?;
+				}
+				Item::Child(node) => {
+					f_child(node, child_cx, &mut items.cursor)?;
+				}
+			}
+		}
+		Ok(items.cursor)
 	}
 }
 
