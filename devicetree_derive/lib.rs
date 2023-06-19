@@ -38,7 +38,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 	let strct: ItemStruct = syn::parse(tokens).expect("invalid struct");
 
 	let mut prop_match_arms = TokenStream::new();
-	let (mut child_match_arms, mut children_rest_expr) = (TokenStream::new(), None);
+	let (mut child_match_arms, mut children_rest_stmts) = (TokenStream::new(), None);
 	for (idx, field) in strct.fields.into_iter().enumerate() {
 		let attr_info = parse_field_attrs(&field.attrs, || match field.ident {
 			None => idx.to_string(),
@@ -80,12 +80,12 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				}
 			}),
 			ItemKind::ChildrenRest => {
-				assert!(children_rest_expr.is_none(), "multilple fields with attribute `#[dt_children(rest)]`");
-				children_rest_expr = Some(quote! {{
+				assert!(children_rest_stmts.is_none(), "multilple fields with attribute `#[dt_children(rest)]`");
+				children_rest_stmts = Some(quote! {
 					let val;
 					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
 					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
-				}});
+				});
 			}
 		};
 	}
@@ -123,8 +123,11 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		)?;
 	};
 	let deserialize_stmts = if child_match_arms.is_empty() {
-		if let Some(children_rest_block) = children_rest_expr {
-			cx_deserialize_node(children_rest_block)
+		if let Some(children_rest_stmts) = children_rest_stmts {
+			cx_deserialize_node(quote! {
+				#children_rest_stmts
+				Ok(())
+			})
 		} else {
 			// No children need to be parsed
 			quote! {
@@ -141,11 +144,13 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			}
 		}
 	} else {
-		let children_rest_expr = children_rest_expr.unwrap_or_else(|| quote! { (), });
+		let children_rest_stmts = children_rest_stmts.unwrap_or_default();
 		cx_deserialize_node(quote! {
 			match child.split_name()?.0 {
 				#child_match_arms
-				_ => #children_rest_expr
+				_ => {
+					#children_rest_stmts
+				}
 			}
 			Ok(())
 		})
