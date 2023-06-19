@@ -412,21 +412,23 @@ mod alloc_impl {
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<&'dtb str> {
 		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			collect_vec(prop_value::Strings::deserialize(blob_prop, cx)?)
+			prop_value::Strings::deserialize(blob_prop, cx)?.collect()
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<String> {
 		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			let strs = prop_value::Strings::deserialize(blob_prop, cx)?;
-			collect_vec(strs.map(|s| Ok(s.into())))
+			prop_value::Strings::deserialize(blob_prop, cx)?
+				.map(|s| Ok(s.into()))
+				.collect()
 		}
 	}
 
 	impl<'dtb> DeserializeProperty<'dtb> for Vec<Box<str>> {
 		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			let strs = prop_value::Strings::deserialize(blob_prop, cx)?;
-			collect_vec(strs.map(|s| Ok(s.into())))
+			prop_value::Strings::deserialize(blob_prop, cx)?
+				.map(|s| Ok(s.into()))
+				.collect()
 		}
 	}
 
@@ -463,14 +465,14 @@ mod alloc_impl {
 	impl<'dtb> DeserializeNode<'dtb> for Vec<Item<'dtb>> {
 		fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
-			Ok((collect_vec(&mut items)?, items.cursor))
+			Ok(((&mut items).collect::<Vec<_>>()?, items.cursor))
 		}
 	}
 
 	impl<'dtb> DeserializeNode<'dtb> for Box<[Item<'dtb>]> {
 		fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
 			let mut items = blob_node.items();
-			Ok((collect_vec(&mut items)?.into_boxed_slice(), items.cursor))
+			Ok(((&mut items).collect::<Box<[_]>>()?, items.cursor))
 		}
 	}
 
@@ -481,18 +483,6 @@ mod alloc_impl {
 			self.push(node);
 			Ok(())
 		}
-	}
-
-	fn collect_vec<T, E>(mut it: impl FallibleIterator<Item = T, Error = E>) -> Result<Vec<T>, E> {
-		let (lower, upper) = it.size_hint();
-		if upper == Some(0) {
-			return Ok(Vec::new());
-		}
-		let mut vec = Vec::with_capacity(Ord::max(lower - 1, 4));
-		while let Some(v) = it.next()? {
-			vec.push(v);
-		}
-		Ok(vec)
 	}
 }
 

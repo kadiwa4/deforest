@@ -4,6 +4,9 @@ use syn::{Attribute, Expr, GenericParam, ItemStruct, Lit, Meta};
 
 #[derive(Clone, Copy)]
 enum ItemKind {
+	SelfStartCursor,
+	SelfName,
+	SelfUnitAddress,
 	Property,
 	Child,
 	Children,
@@ -14,7 +17,8 @@ enum ItemKind {
 ///
 /// Requires an implementation of `Default`.
 ///
-/// Attribute syntax:
+/// Attribute syntax (except for `dt_self`):
+/// For the other attributes:
 /// - `#[dt_*]`
 /// - `#[dt_* = "<item name>"]`
 /// - `#[dt_children(rest)]`
@@ -22,6 +26,13 @@ enum ItemKind {
 /// The default item name is the field name with undescores replaced by hyphens
 /// (and a `#` prepended in case the name ends with `_cells`).
 /// The unit address is ignored.
+///
+/// - `#[dt_self(start_cursor)]` stores a cursor to the containing node in that
+///   field (type `Option<Cursor>`).
+/// - `#[dt_self(name)]` stores the containing node's entire name in that field
+///   (type `T where T: From<&'dtb str>`).
+/// - `#[dt_self(unit_address)]` stores the containing node's unit address in
+///   that field (type `Option<T> where T: From<&'dtb str>`).
 ///
 /// - `#[dt_property]` (default) uses `DeserializeProperty`
 /// - `#[dt_child]` uses `DeserializeNode`
@@ -33,10 +44,15 @@ enum ItemKind {
 ///
 /// The lifetime `'dtb` (if it exists) is special because it will be used for
 /// the `DeserializeNode<'dtb>` implementation.
-#[proc_macro_derive(DeserializeNode, attributes(dt_property, dt_child, dt_children))]
+#[proc_macro_derive(
+	DeserializeNode,
+	attributes(dt_self, dt_property, dt_child, dt_children)
+)]
 pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let strct: ItemStruct = syn::parse(tokens).expect("invalid struct");
 
+	let (mut start_cursor_fields, mut name_fields, mut unit_address_fields) =
+		(Vec::new(), Vec::new(), Vec::new());
 	let mut prop_match_arms = TokenStream::new();
 	let (mut child_match_arms, mut children_rest_stmts) = (TokenStream::new(), None);
 	for (idx, field) in strct.fields.into_iter().enumerate() {
@@ -45,6 +61,25 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			Some(ref i) => i.to_string(),
 		});
 		let (kind, item_name) = attr_info.unwrap_or((ItemKind::Property, None));
+		let field_name = match field.ident {
+			None => TokenTree::Literal(Literal::usize_unsuffixed(idx)),
+			Some(ref i) => TokenTree::Ident(i.clone()),
+		};
+		match kind {
+			ItemKind::SelfStartCursor => {
+				start_cursor_fields.push(field_name);
+				continue;
+			}
+			ItemKind::SelfName => {
+				name_fields.push(field_name);
+				continue;
+			}
+			ItemKind::SelfUnitAddress => {
+				unit_address_fields.push(field_name);
+				continue;
+			}
+			_ => (),
+		}
 		let item_name = item_name.unwrap_or_else(|| {
 			let name = field
 				.ident
@@ -54,12 +89,9 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			let start_hash = if name.ends_with("_cells") { "#" } else { "" };
 			format!("{start_hash}{}", name.replace('_', "-"))
 		});
-		let field_name = match field.ident {
-			None => TokenTree::Literal(Literal::usize_unsuffixed(idx)),
-			Some(i) => TokenTree::Ident(i),
-		};
 		let ty = field.ty;
 		match kind {
+			ItemKind::SelfStartCursor | ItemKind::SelfName | ItemKind::SelfUnitAddress => unreachable!(),
 			ItemKind::Property => {
 				prop_match_arms.extend(quote! {
 					#item_name => {
@@ -107,20 +139,42 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			impl_generics = quote! { <'dtb> };
 		}
 	}
-	let cx_deserialize_node = |child_stmts| quote! {
-		let cursor = cx.deserialize_node(
-			blob_node,
-			|name, prop| {
-				match name {
-					#prop_match_arms
-					_ => (),
-				}
-				Ok(())
-			},
-			|child, child_cx, cursor| {
-				#child_stmts
-			},
-		)?;
+
+	let self_stmts = start_cursor_fields
+		.into_iter()
+		.map(|field| {
+			quote! {
+				this.#field = ::core::option::Option::Some(blob_node.start_cursor());
+			}
+		})
+		.chain(name_fields.into_iter().map(|field| {
+			quote! {
+				this.#field = ::core::convert::From::from(blob_node.name());
+			}
+		}))
+		.chain(unit_address_fields.into_iter().map(|field| {
+			quote! {
+				this.#field = blob_node.split_name()?.1.map(::core::convert::From::from);
+			}
+		}))
+		.collect::<TokenStream>();
+
+	let cx_deserialize_node = |child_stmts| {
+		quote! {
+			let cursor = cx.deserialize_node(
+				blob_node,
+				|name, prop| {
+					match name {
+						#prop_match_arms
+						_ => (),
+					}
+					Ok(())
+				},
+				|child, child_cx, cursor| {
+					#child_stmts
+				},
+			)?;
+		}
 	};
 	let deserialize_stmts = if child_match_arms.is_empty() {
 		if let Some(children_rest_stmts) = children_rest_stmts {
@@ -162,6 +216,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				cx: ::devicetree::NodeContext<'_>,
 			) -> ::devicetree::Result<(Self, ::devicetree::blob::Cursor)> {
 				let mut this: Self = ::core::default::Default::default();
+				#self_stmts
 				#deserialize_stmts
 				::devicetree::Result::Ok((this, cursor))
 			}
@@ -176,6 +231,17 @@ fn parse_field_attrs(
 ) -> Option<(ItemKind, Option<String>)> {
 	let mut relevant_attrs = attrs.iter().filter_map(|attr| {
 		let mut panic_invalid = |attr_name| -> ! {
+			if attr_name == "dt_self" {
+				panic!(
+					"invalid attribute on field `{}`: `{}`
+Valid forms are:
+- `#[dt_self(start_cursor)]`
+- `#[dt_self(name)]`
+- `#[dt_self(unit_address)]`",
+					field_name(),
+					attr.to_token_stream(),
+				);
+			}
 			let extra_forms = if attr_name == "dt_children" {
 				"\n- `#[dt_children(rest)]`"
 			} else {
@@ -193,7 +259,6 @@ Valid forms are:
 
 		let (path, value_lit) = match &attr.meta {
 			Meta::Path(path) => (path, None),
-			// error later if the attribute was actually intended for this macro
 			Meta::List(list) => (&list.path, None),
 			Meta::NameValue(name_value) => {
 				let Expr::Lit(ref value_lit) = name_value.value else {
@@ -206,17 +271,34 @@ Valid forms are:
 
 		let mut rest = false;
 		if let Meta::List(ref list) = attr.meta {
-			if attr_name != "dt_children" {
-				panic_invalid(&attr_name);
-			}
-			list.parse_nested_meta(|meta| {
-				if meta.path.is_ident("rest") {
-					rest = true;
-					return Ok(());
+			match &attr_name[..] {
+				"dt_self" => {
+					let mut kind = None;
+					list.parse_nested_meta(|meta| {
+						if meta.path.is_ident("start_cursor") {
+							kind = Some(ItemKind::SelfStartCursor);
+						} else if meta.path.is_ident("name") {
+							kind = Some(ItemKind::SelfName);
+						} else if meta.path.is_ident("unit_address") {
+							kind = Some(ItemKind::SelfUnitAddress);
+						}
+						Ok(())
+					})
+					.unwrap();
+					return Some((kind.unwrap_or_else(|| panic_invalid(&attr_name)), None));
 				}
-				panic_invalid(&attr_name);
-			})
-			.unwrap();
+				"dt_property" | "dt_child" => panic_invalid(&attr_name),
+				"dt_children" => list
+					.parse_nested_meta(|meta| {
+						if meta.path.is_ident("rest") {
+							rest = true;
+							return Ok(());
+						}
+						panic_invalid(&attr_name);
+					})
+					.unwrap(),
+				_ => return None,
+			}
 		}
 		let kind = match &attr_name[..] {
 			"dt_property" => ItemKind::Property,
