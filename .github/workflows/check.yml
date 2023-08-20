@@ -1,0 +1,30 @@
+name: Check
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Log Rust version
+      run: rustc -V
+    - name: Check formatting
+      run: cargo fmt --check
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ["", alloc, std, derive, "alloc derive", "std derive"]
+    steps:
+    - uses: actions/checkout@v3
+    - name: Run Clippy
+      run: cargo clippy --features ${{ matrix.features }}
+    - name: Run tests
+      run: cargo test --features ${{ matrix.features }} --message-format short

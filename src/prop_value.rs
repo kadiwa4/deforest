@@ -51,7 +51,7 @@ impl<'dtb> DeserializeProperty<'dtb> for SizeCells {
 /// Iterator over the strings contained in the property's value.
 ///
 /// Fused (see [`core::iter::FusedIterator`]).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Strings<'dtb> {
 	value: &'dtb [u8],
 }

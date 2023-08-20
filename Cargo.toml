@@ -13,6 +13,7 @@ license = "MIT"
 [[example]]
 name = "borrowed_model"
 crate-type = ["lib"]
+test = true
 required-features = ["derive"]
 
 [[example]]
