@@ -25,6 +25,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Run Clippy
-      run: cargo clippy --features ${{ matrix.features }}
+      run: cargo clippy --features "${{ matrix.features }}"
     - name: Run tests
-      run: cargo test --features ${{ matrix.features }} --message-format short
+      run: cargo test --features "${{ matrix.features }}" --message-format short
