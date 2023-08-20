@@ -3,7 +3,7 @@ name: Check
 on:
   push:
     branches: [ "main" ]
-  pull_request
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
