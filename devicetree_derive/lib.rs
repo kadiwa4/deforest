@@ -1,3 +1,7 @@
+#![warn(rust_2018_idioms)]
+#![warn(macro_use_extern_crate, meta_variable_misuse, missing_abi)]
+#![warn(unused_lifetimes, unused_macro_rules, unused_qualifications)]
+
 use proc_macro2::{Literal, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{Attribute, Expr, GenericParam, ItemStruct, Lit, Meta};
@@ -149,7 +153,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		})
 		.chain(name_fields.into_iter().map(|field| {
 			quote! {
-				this.#field = ::core::convert::From::from(blob_node.name());
+				this.#field = ::core::convert::From::from(blob_node.name()?);
 			}
 		}))
 		.chain(unit_address_fields.into_iter().map(|field| {

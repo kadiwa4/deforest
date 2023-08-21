@@ -8,7 +8,7 @@ use core::{
 use fallible_iterator::FallibleIterator;
 
 use crate::{
-	blob::{Cursor, Devicetree, Item, Property, Token, TOKEN_SIZE},
+	blob::{self, Cursor, Devicetree, Item, Property, Token, TOKEN_SIZE},
 	util, Error, NodeContext, PushDeserializedNode, Result,
 };
 
@@ -17,7 +17,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Node<'dtb> {
 	pub(super) dt: &'dtb Devicetree,
-	pub(super) name: &'dtb str,
+	pub(super) name: &'dtb [u8],
 	pub(super) contents: Cursor,
 }
 
@@ -28,16 +28,16 @@ impl<'dtb> Node<'dtb> {
 	}
 
 	/// The node's name.
-	pub fn name(&self) -> &'dtb str {
-		self.name
+	pub fn name(&self) -> blob::Result<&'dtb str> {
+		util::str_from_ascii(self.name).ok_or(blob::Error::InvalidString)
 	}
 
 	/// The name as it would show up in a devicetree source file.
-	pub fn source_name(&self) -> &'dtb str {
+	pub fn source_name(&self) -> blob::Result<&'dtb str> {
 		if self.name.is_empty() {
-			"/"
+			Ok("/")
 		} else {
-			self.name
+			self.name()
 		}
 	}
 
@@ -50,7 +50,7 @@ impl<'dtb> Node<'dtb> {
 	///
 	/// There cannot be more than one `@`.
 	pub fn split_name(&self) -> Result<(&'dtb str, Option<&'dtb str>)> {
-		util::split_node_name(self.name)
+		util::split_node_name(self.name()?)
 	}
 
 	/// Cursor pointing to this node's [`Token`].
@@ -116,7 +116,7 @@ impl<'dtb> Node<'dtb> {
 	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
 		let mut iter = Children(Items::new(self, self.contents));
 		if util::split_node_name(name)?.1.is_some() {
-			iter.find(|n| Ok(n.name() == name))
+			iter.find(|n| Ok(n.name()? == name))
 		} else if let Some((candidate, (_, candidate_addr))) = (&mut iter)
 			.map(|n| n.split_name().map(|split| (n, split)))
 			.find(|&(_, (n, _))| Ok(n == name))?
@@ -182,7 +182,7 @@ impl<'dtb> Display for Node<'dtb> {
 			match token {
 				Token::BeginNode(node) => {
 					write_indent(f, prev_depth)?;
-					write!(f, "{} {{", node.source_name())?;
+					write!(f, "{} {{", node.source_name().map_err(|_| fmt::Error)?)?;
 					just_began_node = true;
 				}
 				Token::EndNode => {
@@ -356,7 +356,7 @@ impl<'dtb> Children<'dtb> {
 		&mut self,
 		mut predicate: impl FnMut(&str) -> bool,
 	) -> Result<Option<Node<'dtb>>> {
-		self.find(|n| Ok(predicate(n.name())))
+		self.find(|n| Ok(predicate(n.name()?)))
 	}
 
 	/// Searches for a node whose split name satisfies the predicate.

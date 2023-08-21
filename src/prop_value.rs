@@ -3,7 +3,6 @@
 use crate::{blob::Property, util, Cells, DeserializeProperty, Error, NodeContext, Result};
 use core::iter::FusedIterator;
 
-use ascii::AsciiStr;
 use fallible_iterator::{DoubleEndedFallibleIterator, FallibleIterator};
 
 /// Value of `#address-cells`.
@@ -82,8 +81,8 @@ impl<'dtb> FallibleIterator for Strings<'dtb> {
 		let Some(idx) = self.value.iter().position(|&b| b == 0) else { return Ok(None) };
 		let bytes = &self.value[..idx];
 		self.value = &self.value[idx + 1..];
-		let bytes = AsciiStr::from_ascii(bytes).map_err(|_| Error::UnsuitableProperty)?;
-		Ok(Some(bytes.as_str()))
+		let s = util::str_from_ascii(bytes).ok_or(Error::UnsuitableProperty)?;
+		Ok(Some(s))
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
@@ -100,8 +99,8 @@ impl<'dtb> DoubleEndedFallibleIterator for Strings<'dtb> {
 		let [value @ .., _] = self.value else { return Ok(None) };
 		let idx = value.iter().rposition(|&b| b == 0).map_or(0, |i| i + 1);
 		self.value = &self.value[..idx];
-		let bytes = AsciiStr::from_ascii(&value[idx..]).map_err(|_| Error::UnsuitableProperty)?;
-		Ok(Some(bytes.as_str()))
+		let s = util::str_from_ascii(&value[idx..]).ok_or(Error::UnsuitableProperty)?;
+		Ok(Some(s))
 	}
 }
 

@@ -13,8 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Log Rust version
-      run: rustc -V
     - name: Check formatting
       run: cargo fmt --check
   check:

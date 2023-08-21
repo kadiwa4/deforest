@@ -388,7 +388,7 @@ impl<'dtb> Property<'dtb> {
 	/// # Errors
 	/// Fails if the string is invalid.
 	pub fn name(self) -> Result<&'dtb str> {
-		util::get_c_str(self.name_blob)
+		util::str_from_ascii(util::get_c_str(self.name_blob)?).ok_or(Error::InvalidString)
 	}
 
 	/// The property's value.
@@ -489,7 +489,7 @@ impl<'dtb> Item<'dtb> {
 	pub fn name(self) -> Result<&'dtb str> {
 		match self {
 			Self::Property(prop) => prop.name(),
-			Self::Child(node) => Ok(node.name()),
+			Self::Child(node) => node.name(),
 		}
 	}
 }

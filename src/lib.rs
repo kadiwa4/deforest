@@ -298,8 +298,7 @@ impl<'dtb> DeserializeProperty<'dtb> for u64 {
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb str {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		let [rest @ .., 0] = blob_prop.value() else { return Err(Error::UnsuitableProperty) };
-		let bytes = AsciiStr::from_ascii(rest).map_err(|_| Error::UnsuitableProperty)?;
-		Ok(bytes.as_str())
+		util::str_from_ascii(rest).ok_or(Error::UnsuitableProperty)
 	}
 }
 
@@ -546,13 +545,15 @@ pub mod util {
 		Some(value)
 	}
 
-	pub(crate) fn get_c_str(blob: &[u8]) -> Result<&str, blob::Error> {
+	pub(crate) fn get_c_str(blob: &[u8]) -> Result<&[u8], blob::Error> {
 		let mut iter = blob.split(|&b| b == 0);
 		let blob = iter.next().unwrap();
 		iter.next().ok_or(blob::Error::InvalidString)?;
+		Ok(blob)
+	}
 
-		let bytes = AsciiStr::from_ascii(blob).map_err(|_| blob::Error::InvalidString)?;
-		Ok(bytes.as_str())
+	pub(crate) fn str_from_ascii(blob: &[u8]) -> Option<&str> {
+		AsciiStr::from_ascii(blob).ok().map(AsciiStr::as_str)
 	}
 
 	/// Same as `<[_]>::get` with a range except that it takes a length, not an end
