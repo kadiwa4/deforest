@@ -4,6 +4,9 @@
 //! [spec]: https://www.devicetree.org/specifications
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![warn(rust_2018_idioms)]
+#![warn(macro_use_extern_crate, meta_variable_misuse, missing_abi)]
+#![warn(unused_lifetimes, unused_macro_rules, unused_qualifications)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -18,13 +21,12 @@ pub use fallible_iterator;
 use core::{
 	any::Any,
 	fmt::{self, Display, Formatter},
-	iter,
-	mem::size_of,
-	slice,
+	iter, slice,
 };
 
 use ascii::AsciiStr;
 use fallible_iterator::FallibleIterator;
+use zerocopy::LayoutVerified;
 
 use blob::{Cursor, Item, Node, Property};
 
@@ -140,10 +142,10 @@ pub struct ReserveEntries<'dtb> {
 
 impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {
 	type Item = ReserveEntry;
-	type Error = crate::Error;
+	type Error = Error;
 
-	fn next(&mut self) -> crate::Result<Option<Self::Item>, Self::Error> {
-		const RESERVE_ENTRY_U64_SIZE: usize = size_of::<ReserveEntry>() / 8;
+	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+		const RESERVE_ENTRY_U64_SIZE: usize = 2;
 
 		let blob = self
 			.blob
@@ -268,11 +270,10 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
-		let val = blob_prop.value();
-		if val.len() % 4 != 0 {
-			return Err(Error::UnsuitableProperty);
+		match LayoutVerified::new_slice(blob_prop.value()) {
+			Some(val) => Ok(val.into_slice()),
+			None => Err(Error::UnsuitableProperty),
 		}
-		Ok(unsafe { slice::from_raw_parts(val as *const _ as *const u32, val.len() / 4) })
 	}
 }
 

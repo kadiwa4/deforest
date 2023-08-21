@@ -1,5 +1,7 @@
 use core::{cmp::Ordering, mem::size_of};
 
+use zerocopy::FromBytes;
+
 use crate::{
 	blob::{Devicetree, Error, Item, Node, Property, Result},
 	util,
@@ -105,6 +107,7 @@ impl Devicetree {
 	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
 		const PROP_HEADER_SIZE: usize = size_of::<PropHeader>();
 
+		#[derive(FromBytes)]
 		#[repr(C)]
 		struct PropHeader {
 			len: u32,
@@ -118,7 +121,7 @@ impl Devicetree {
 
 			let token = match token {
 				RawToken::BeginNode => {
-					let name = &blob[cursor.offset as usize..];
+					let name = &blob[offset..];
 					let name = util::get_c_str(name)?;
 
 					cursor.increase_offset(name.len() as u32 + 1, blob)?;
@@ -137,10 +140,9 @@ impl Devicetree {
 					Token::EndNode
 				}
 				RawToken::Prop => {
-					let header = util::slice_get_with_len(blob, offset, PROP_HEADER_SIZE)
+					let header = PropHeader::read_from_prefix(&blob[offset..])
 						.ok_or(Error::InvalidPropertyHeader)?;
 
-					let header = unsafe { &*(header as *const _ as *const PropHeader) };
 					let name_blob = self
 						.strings_blob()?
 						.get(u32::from_be(header.nameoff) as usize..)

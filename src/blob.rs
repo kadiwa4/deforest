@@ -14,10 +14,12 @@ pub use token::*;
 use alloc::{boxed::Box, vec::Vec};
 use core::{
 	fmt::{self, Debug, Display, Formatter, Write},
-	mem::{self, size_of, size_of_val},
+	mem::{size_of, size_of_val},
 	ptr::NonNull,
 	slice,
 };
+
+use zerocopy::{AsBytes, LayoutVerified};
 
 use crate::{util, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
@@ -130,8 +132,10 @@ impl Devicetree {
 	/// Constructs a devicetree from a slice containing a DTB.
 	///
 	/// If you only have a `&[u8]` value, consider using
+	/// [`zerocopy::LayoutVerified`][LayoutVerified] or
 	/// [`bytemuck::try_cast_slice`][try_cast_slice].
 	///
+	/// [LayoutVerified]: https://docs.rs/zerocopy/0.6/zerocopy/struct.LayoutVerified.html
 	/// [try_cast_slice]: https://docs.rs/bytemuck/1/bytemuck/fn.try_cast_slice.html
 	pub fn from_slice(blob: &[u64]) -> Result<&Self> {
 		Self::safe_checks(blob)?;
@@ -185,7 +189,7 @@ impl Devicetree {
 	/// # Safety
 	/// `size_of_val(blob) >= HEADER_SIZE`
 	unsafe fn from_slice_internal(blob: &[u64]) -> Result<&Self> {
-		let tree: &Self = mem::transmute(blob);
+		let tree: &Self = core::mem::transmute(blob);
 		tree.late_checks()?;
 		Ok(tree)
 	}
@@ -259,12 +263,14 @@ impl Devicetree {
 
 	/// The blob data as a `u8` slice.
 	pub fn blob_u8(&self) -> &[u8] {
-		unsafe { slice::from_raw_parts(self as *const _ as *const u8, size_of_val(self)) }
+		self.blob.as_bytes()
 	}
-	/// The blob data as a `u32` slice.
 
+	/// The blob data as a `u32` slice.
 	pub fn blob_u32(&self) -> &[u32] {
-		unsafe { slice::from_raw_parts(self as *const _ as *const u32, size_of_val(self) / 4) }
+		LayoutVerified::new_slice(self.blob_u8())
+			.unwrap()
+			.into_slice()
 	}
 
 	/// The blob data as a `u64` slice.
@@ -415,15 +421,10 @@ impl<'dtb> Display for Property<'dtb> {
 
 		impl<const N: usize> Display for HexArray<N> {
 			fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-				let mut buf = [(0, 0); N];
-				for (out, n) in core::iter::zip(&mut buf, self.0) {
-					out.0 = HEX_STRING[n as usize >> 4];
-					out.1 = HEX_STRING[n as usize & 0x0f];
-				}
-				unsafe {
-					let buf = core::slice::from_raw_parts(&buf as *const _ as *const u8, N * 2);
-					f.write_str(core::str::from_utf8_unchecked(buf))
-				}
+				let buf = self.0.map(|n| {
+					u16::from_ne_bytes([HEX_STRING[n as usize >> 4], HEX_STRING[n as usize & 0x0f]])
+				});
+				f.write_str(unsafe { core::str::from_utf8_unchecked(buf.as_bytes()) })
 			}
 		}
 

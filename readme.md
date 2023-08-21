@@ -4,7 +4,7 @@
 
 This is in an early stage of development. Use [`fdt-rs`](https://lib.rs/crates/fdt-rs) instead.
 
-The crate tries to be efficient by avoiding allocations (it can be used without `alloc`), but I have no realistic benchmarks and the interface isn't the most ergonomic. It also has `unsafe` code scattered across the entire codebase.
+The crate tries to be efficient by avoiding allocations (it can be used without `alloc`), but I have no realistic benchmarks and the interface isn't the most ergonomic.
 
 Competitor crates:
 - [`device_tree`](https://github.com/mbr/device_tree-rs)
