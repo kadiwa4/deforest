@@ -23,7 +23,6 @@ device_tree:
 - depends on `std`
 
 devicetree:
-- depends on `std`
 - is nightly-only
 - is somewhat slow
 - has UB (`static mut` [here](https://github.com/duanyu-yu/DeviceTree/blob/main/src/tree/node.rs#L27))

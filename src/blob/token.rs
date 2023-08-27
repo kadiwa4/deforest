@@ -1,6 +1,6 @@
 use core::{cmp::Ordering, mem::size_of};
 
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, FromZeroes};
 
 use crate::{
 	blob::{Devicetree, Error, Item, Node, Property, Result},
@@ -107,7 +107,7 @@ impl Devicetree {
 	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
 		const PROP_HEADER_SIZE: usize = size_of::<PropHeader>();
 
-		#[derive(FromBytes)]
+		#[derive(FromBytes, FromZeroes)]
 		#[repr(C)]
 		struct PropHeader {
 			len: u32,
@@ -182,7 +182,7 @@ impl Devicetree {
 		let offset = cursor.offset as usize;
 		let Some(token) = util::slice_get_with_len(self.blob_u8(), offset, TOKEN_SIZE as usize)
 		else {
-			return Ok(None)
+			return Ok(None);
 		};
 		let token = u32::from_ne_bytes(token.try_into().unwrap());
 

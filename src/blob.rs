@@ -19,7 +19,7 @@ use core::{
 	slice,
 };
 
-use zerocopy::{AsBytes, LayoutVerified};
+use zerocopy::{AsBytes, Ref};
 
 use crate::{util, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
@@ -131,11 +131,10 @@ impl Devicetree {
 
 	/// Constructs a devicetree from a slice containing a DTB.
 	///
-	/// If you only have a `&[u8]` value, consider using
-	/// [`zerocopy::LayoutVerified`][LayoutVerified] or
-	/// [`bytemuck::try_cast_slice`][try_cast_slice].
+	/// If you only have a `&[u8]` value, consider using [`zerocopy::Ref`][Ref]
+	/// or [`bytemuck::try_cast_slice`][try_cast_slice].
 	///
-	/// [LayoutVerified]: https://docs.rs/zerocopy/0.6/zerocopy/struct.LayoutVerified.html
+	/// [Ref]: https://docs.rs/zerocopy/0.7/zerocopy/struct.Ref.html
 	/// [try_cast_slice]: https://docs.rs/bytemuck/1/bytemuck/fn.try_cast_slice.html
 	pub fn from_slice(blob: &[u64]) -> Result<&Self> {
 		Self::safe_checks(blob)?;
@@ -268,9 +267,7 @@ impl Devicetree {
 
 	/// The blob data as a `u32` slice.
 	pub fn blob_u32(&self) -> &[u32] {
-		LayoutVerified::new_slice(self.blob_u8())
-			.unwrap()
-			.into_slice()
+		Ref::new_slice(self.blob_u8()).unwrap().into_slice()
 	}
 
 	/// The blob data as a `u64` slice.
@@ -314,7 +311,9 @@ impl Devicetree {
 		let components = path.as_components()?;
 		let mut node = self.root_node()?;
 		for name in components {
-			let Some(n) = node.get_child(name)? else { return Ok(None) };
+			let Some(n) = node.get_child(name)? else {
+				return Ok(None);
+			};
 			node = n;
 		}
 
@@ -329,7 +328,9 @@ impl Devicetree {
 		let components = path.as_components()?;
 		let mut node = self.root_node()?;
 		for name in components {
-			let Some(n) = node.get_child_strict(name)? else { return Ok(None) };
+			let Some(n) = node.get_child_strict(name)? else {
+				return Ok(None);
+			};
 			node = n;
 		}
 

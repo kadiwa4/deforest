@@ -30,7 +30,7 @@ required-features = ["alloc", "derive"]
 ascii = { version = "1.1.0", default-features = false }
 devicetree_derive = { path = "devicetree_derive", optional = true }
 fallible-iterator = { version = "0.3.0", default-features = false }
-zerocopy = "0.6.3"
+zerocopy = { version =  "0.7.0", features = ["derive"] }
 
 [features]
 alloc = ["fallible-iterator/alloc"]

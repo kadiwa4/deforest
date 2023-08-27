@@ -254,7 +254,9 @@ impl<'dtb> FallibleIterator for Items<'dtb> {
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		while self.cursor.depth >= self.at_depth {
 			let token_depth = self.cursor.depth;
-			let Some(token) = self.dt.next_token(&mut self.cursor)? else { return Ok(None) };
+			let Some(token) = self.dt.next_token(&mut self.cursor)? else {
+				return Ok(None);
+			};
 			if token_depth == self.at_depth {
 				return Ok(token.into_item());
 			}
@@ -345,7 +347,9 @@ impl<'dtb> Children<'dtb> {
 		&mut self,
 		f: impl FnOnce(Node<'dtb>) -> Result<(T, Cursor)>,
 	) -> Result<Option<T>> {
-		let Some(child) = self.next()? else { return Ok(None) };
+		let Some(child) = self.next()? else {
+			return Ok(None);
+		};
 		let (ret, cursor) = f(child)?;
 		self.0.set_cursor(cursor);
 		Ok(Some(ret))
@@ -510,7 +514,9 @@ impl<'dtb> FallibleIterator for NamedRangeIter<'dtb> {
 	type Error = Error;
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		let Self(Some(inner)) = self else { return Ok(None) };
+		let Self(Some(inner)) = self else {
+			return Ok(None);
+		};
 		inner.len -= 1;
 		let res = inner
 			.children

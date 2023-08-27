@@ -78,7 +78,9 @@ impl<'dtb> FallibleIterator for Strings<'dtb> {
 	type Error = Error;
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		let Some(idx) = self.value.iter().position(|&b| b == 0) else { return Ok(None) };
+		let Some(idx) = self.value.iter().position(|&b| b == 0) else {
+			return Ok(None);
+		};
 		let bytes = &self.value[..idx];
 		self.value = &self.value[idx + 1..];
 		let s = util::str_from_ascii(bytes).ok_or(Error::UnsuitableProperty)?;
@@ -96,7 +98,9 @@ impl<'dtb> FallibleIterator for Strings<'dtb> {
 
 impl<'dtb> DoubleEndedFallibleIterator for Strings<'dtb> {
 	fn next_back(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		let [value @ .., _] = self.value else { return Ok(None) };
+		let [value @ .., _] = self.value else {
+			return Ok(None);
+		};
 		let idx = value.iter().rposition(|&b| b == 0).map_or(0, |i| i + 1);
 		self.value = &self.value[..idx];
 		let s = util::str_from_ascii(&value[idx..]).ok_or(Error::UnsuitableProperty)?;

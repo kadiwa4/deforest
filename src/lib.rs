@@ -26,7 +26,7 @@ use core::{
 
 use ascii::AsciiStr;
 use fallible_iterator::FallibleIterator;
-use zerocopy::LayoutVerified;
+use zerocopy::Ref;
 
 use blob::{Cursor, Item, Node, Property};
 
@@ -270,7 +270,7 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
-		match LayoutVerified::new_slice(blob_prop.value()) {
+		match Ref::new_slice(blob_prop.value()) {
 			Some(val) => Ok(val.into_slice()),
 			None => Err(Error::UnsuitableProperty),
 		}
@@ -297,7 +297,9 @@ impl<'dtb> DeserializeProperty<'dtb> for u64 {
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb str {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
-		let [rest @ .., 0] = blob_prop.value() else { return Err(Error::UnsuitableProperty) };
+		let [rest @ .., 0] = blob_prop.value() else {
+			return Err(Error::UnsuitableProperty);
+		};
 		util::str_from_ascii(rest).ok_or(Error::UnsuitableProperty)
 	}
 }
