@@ -28,7 +28,8 @@ enum ItemKind {
 /// - `#[dt_children(rest)]`
 ///
 /// The default item name is the field name with undescores replaced by hyphens
-/// (and a `#` prepended in case the name ends with `_cells`).
+/// (and a `#` prepended in case the name ends with `_cells`), except
+/// `device_type`, which uses an underscore.
 /// The unit address is ignored.
 ///
 /// - `#[dt_self(start_cursor)]` stores a cursor to the containing node in that
@@ -90,6 +91,9 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				.as_ref()
 				.unwrap_or_else(|| panic!("field {idx} needs an explicit name"))
 				.to_string();
+			if name == "device_type" {
+				return name;
+			}
 			let start_hash = if name.ends_with("_cells") { "#" } else { "" };
 			format!("{start_hash}{}", name.replace('_', "-"))
 		});
