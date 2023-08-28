@@ -117,9 +117,9 @@ impl Devicetree {
 		let blob = slice::from_raw_parts(ptr, HEADER_SIZE / DTB_ALIGN);
 		Self::check_magic(blob)?;
 
-		let size = Self::totalsize(blob) as usize;
-		if size < HEADER_SIZE || usize::overflowing_add(ptr as usize, size).1 {
-			// the buffer is too short or wraps around
+		let size = Self::totalsize(blob)? as usize;
+		if usize::overflowing_add(ptr as usize, size).1 {
+			// the buffer wraps around
 			return Err(Error::InvalidTotalsize);
 		}
 
@@ -130,14 +130,14 @@ impl Devicetree {
 
 	/// Constructs a devicetree from a slice containing a DTB.
 	///
-	/// If you only have a `&[u8]` value, consider using [`zerocopy::Ref`][Ref]
-	/// or [`bytemuck::try_cast_slice`][try_cast_slice].
+	/// If you only have a `&[u8]` value, consider using
+	/// [`zerocopy::Ref`][zerocopy] or [`bytemuck::try_cast_slice`][bytemuck].
 	///
-	/// [Ref]: https://docs.rs/zerocopy/0.7/zerocopy/struct.Ref.html
-	/// [try_cast_slice]: https://docs.rs/bytemuck/1/bytemuck/fn.try_cast_slice.html
+	/// [zerocopy]: https://docs.rs/zerocopy/0.7/zerocopy/struct.Ref.html
+	/// [bytemuck]: https://docs.rs/bytemuck/1/bytemuck/fn.try_cast_slice.html
 	pub fn from_slice(blob: &[u64]) -> Result<&Self> {
-		Self::safe_checks(blob)?;
-		unsafe { Self::from_slice_internal(blob) }
+		let len = Self::safe_checks(blob)?;
+		unsafe { Self::from_slice_internal(&blob[..len]) }
 	}
 
 	/// Constructs a devicetree from a vec containing a DTB.
@@ -146,11 +146,12 @@ impl Devicetree {
 	/// [`Devicetree::from_unaligned`], which will copy your vector, or
 	/// [`Devicetree::from_slice`], which will return a reference.
 	#[cfg(feature = "alloc")]
-	pub fn from_vec(blob: Vec<u64>) -> Result<Box<Self>> {
-		Self::safe_checks(&blob)?;
-		let tree = unsafe { Self::from_box_unchecked(blob.into_boxed_slice()) };
-		tree.late_checks()?;
-		Ok(tree)
+	pub fn from_vec(mut blob: Vec<u64>) -> Result<Box<Self>> {
+		let len = Self::safe_checks(&blob)?;
+		blob.truncate(len);
+		let this = unsafe { Self::from_box_unchecked(blob.into_boxed_slice()) };
+		this.late_checks()?;
+		Ok(this)
 	}
 
 	#[cfg(feature = "alloc")]
@@ -181,12 +182,13 @@ impl Devicetree {
 	/// # Safety
 	/// `size_of_val(blob) >= HEADER_SIZE`
 	unsafe fn from_slice_internal(blob: &[u64]) -> Result<&Self> {
-		let tree: &Self = core::mem::transmute(blob);
-		tree.late_checks()?;
-		Ok(tree)
+		let this: &Self = core::mem::transmute(blob);
+		this.late_checks()?;
+		Ok(this)
 	}
 
-	fn safe_checks(blob: &[u64]) -> Result<()> {
+	/// Returns the length that the blob should be trimmed to.
+	fn safe_checks(blob: &[u64]) -> Result<usize> {
 		if size_of_val(blob) < HEADER_SIZE {
 			return Err(Error::UnexpectedEnd);
 		}
@@ -194,12 +196,10 @@ impl Devicetree {
 		let size = unsafe {
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
-		};
+		}? as usize;
+
 		// sometimes the dtb's length is not divisible by 8
-		if usize::checked_sub(size_of_val(blob), size as usize).map_or(true, |d| d >= 8) {
-			return Err(Error::InvalidTotalsize);
-		}
-		Ok(())
+		Ok((size + DTB_ALIGN - 1) / DTB_ALIGN)
 	}
 
 	/// Verifies the magic header of a devicetree blob.
@@ -218,9 +218,13 @@ impl Devicetree {
 	///
 	/// # Safety
 	/// `size_of_val(blob) >= HEADER_SIZE`
-	unsafe fn totalsize(blob: &[u64]) -> u32 {
+	unsafe fn totalsize(blob: &[u64]) -> Result<u32> {
 		let header = blob as *const _ as *const Header;
-		u32::from_be((*header).totalsize)
+		let size = u32::from_be((*header).totalsize);
+		if size < HEADER_SIZE as u32 {
+			return Err(Error::InvalidTotalsize);
+		}
+		Ok(size)
 	}
 
 	fn late_checks(&self) -> Result<()> {
