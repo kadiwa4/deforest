@@ -37,6 +37,7 @@ pub enum Error {
 	/// Not produced by this crate.
 	Unknown,
 	Blob(blob::Error),
+	InvalidDeviceType,
 	InvalidNodeName,
 	InvalidPath,
 	TooManyCells,
@@ -50,6 +51,7 @@ impl Display for Error {
 		let description = match self {
 			Unknown => "unknown",
 			Blob(err) => return Display::fmt(err, f),
+			InvalidDeviceType => "invalid device_type",
 			InvalidNodeName => "invalid node name",
 			InvalidPath => "invalid path",
 			TooManyCells => "too many cells",

@@ -25,6 +25,7 @@ struct RootNode<'dtb> {
 
 #[derive(Default, DeserializeNode)]
 struct MemoryNode<'dtb> {
+	device_type: Option<prop_value::DeviceTypeMemory>,
 	reg: Option<prop_value::Reg<'dtb>>,
 	initial_mapped_area: Option<prop_value::InitialMappedArea>,
 	hotpluggable: bool,
@@ -65,6 +66,7 @@ struct CpusNode<'dtb> {
 
 #[derive(Default, DeserializeNode)]
 struct CpuNode<'dtb> {
+	device_type: Option<prop_value::DeviceTypeCpu>,
 	reg: Option<prop_value::Reg<'dtb>>,
 	clock_frequency: prop_value::SmallU64,
 	timebase_frequency: prop_value::SmallU64,

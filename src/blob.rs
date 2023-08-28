@@ -23,6 +23,7 @@ use zerocopy::{AsBytes, Ref};
 
 use crate::{util, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
+/// Any low level, technical error caused by this crate.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {

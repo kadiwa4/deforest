@@ -29,6 +29,7 @@ struct RootNode {
 
 #[derive(Debug, Default, DeserializeNode)]
 struct MemoryNode {
+	device_type: Option<prop_value::DeviceTypeMemory>,
 	reg: Option<Vec<RegBlock>>,
 	initial_mapped_area: Option<prop_value::InitialMappedArea>,
 	hotpluggable: bool,
@@ -69,6 +70,7 @@ struct CpusNode {
 
 #[derive(Debug, Default, DeserializeNode)]
 struct CpuNode {
+	device_type: Option<prop_value::DeviceTypeCpu>,
 	reg: Option<Vec<RegBlock>>,
 	clock_frequency: prop_value::SmallU64,
 	timebase_frequency: prop_value::SmallU64,
@@ -119,5 +121,8 @@ fn deserialize() {
 
 	let dt = devicetree::blob::Devicetree::from_unaligned(UNALIGNED_BLOB).unwrap();
 	let root_node: RootNode = dt.parse_root().unwrap();
-	assert_eq!(root_node.cpus.unwrap().cpu.len(), 4);
+	let cpus = root_node.cpus.unwrap().cpu;
+	assert_eq!(cpus.len(), 4);
+	assert!(cpus.iter().all(|c| c.device_type.is_some()));
+	assert!(root_node.memory[0].device_type.is_some());
 }

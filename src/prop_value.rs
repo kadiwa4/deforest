@@ -325,3 +325,31 @@ impl<'dtb> DeserializeProperty<'dtb> for SmallU64 {
 		}
 	}
 }
+
+/// Zero-sized type that fails if the property value isn't `"memory"`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DeviceTypeMemory;
+
+impl<'dtb> DeserializeProperty<'dtb> for DeviceTypeMemory {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
+		if blob_prop.value() == b"memory\0" {
+			Ok(Self)
+		} else {
+			Err(Error::InvalidDeviceType)
+		}
+	}
+}
+
+/// Zero-sized type that fails if the property value isn't `"cpu"`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DeviceTypeCpu;
+
+impl<'dtb> DeserializeProperty<'dtb> for DeviceTypeCpu {
+	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
+		if blob_prop.value() == b"cpu\0" {
+			Ok(Self)
+		} else {
+			Err(Error::InvalidDeviceType)
+		}
+	}
+}
