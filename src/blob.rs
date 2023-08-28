@@ -166,6 +166,7 @@ impl Devicetree {
 		let capacity = (blob.len() + DTB_ALIGN - 1) / DTB_ALIGN;
 		let mut aligned_blob: Vec<u64> = Vec::with_capacity(capacity);
 
+		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity
 		unsafe {
 			*aligned_blob.as_mut_ptr().add(capacity - 1) = 0;
 			core::ptr::copy_nonoverlapping(
@@ -221,20 +222,39 @@ impl Devicetree {
 	unsafe fn totalsize(blob: &[u64]) -> Result<u32> {
 		let header = blob as *const _ as *const Header;
 		let size = u32::from_be((*header).totalsize);
-		if size < HEADER_SIZE as u32 {
-			return Err(Error::InvalidTotalsize);
+		if (HEADER_SIZE..=size_of_val(blob)).contains(&(size as usize)) {
+			Ok(size)
+		} else {
+			Err(Error::InvalidTotalsize)
 		}
-		Ok(size)
 	}
 
 	fn late_checks(&self) -> Result<()> {
-		if self.header().last_comp_version != LAST_COMPATIBLE_VERSION.to_be() {
+		let header = self.header();
+		if header.last_comp_version != LAST_COMPATIBLE_VERSION.to_be() {
 			return Err(Error::IncompatibleVersion);
+		}
+
+		let offset = u32::from_be(header.off_dt_struct) as usize;
+		let len = u32::from_be(header.size_dt_struct) as usize;
+		let exact_size = u32::from_be(header.totalsize) as usize;
+		if offset % STRUCT_BLOCK_ALIGN != 0 || len % STRUCT_BLOCK_ALIGN != 0 {
+			return Err(Error::UnalignedBlock);
+		}
+		if offset + len > exact_size {
+			return Err(Error::BlockOutOfBounds);
+		}
+
+		let offset = u32::from_be(header.off_dt_strings) as usize;
+		let len = u32::from_be(header.size_dt_strings) as usize;
+		if offset + len > exact_size {
+			return Err(Error::BlockOutOfBounds);
 		}
 		Ok(())
 	}
 
 	fn header(&self) -> &Header {
+		// Safety: length check was done in Self::totalsize
 		unsafe { &*(self as *const _ as *const Header) }
 	}
 
@@ -281,28 +301,28 @@ impl Devicetree {
 	}
 
 	/// The blob data of the struct block. Always 4-byte aligned.
-	pub fn struct_blob(&self) -> Result<&[u32]> {
+	pub fn struct_blob(&self) -> &[u32] {
 		let header = self.header();
 		let offset = u32::from_be(header.off_dt_struct) as usize;
 		let len = u32::from_be(header.size_dt_struct) as usize;
-		if offset % STRUCT_BLOCK_ALIGN != 0 || len % STRUCT_BLOCK_ALIGN != 0 {
-			return Err(Error::UnalignedBlock);
-		}
 
-		util::slice_get_with_len(
-			self.blob_u32(),
-			offset / STRUCT_BLOCK_ALIGN,
-			len / STRUCT_BLOCK_ALIGN,
-		)
-		.ok_or(Error::BlockOutOfBounds)
+		// Safety: bounds check was done in Self::late_checks
+		unsafe {
+			util::slice_get_with_len_unchecked(
+				self.blob_u32(),
+				offset / STRUCT_BLOCK_ALIGN,
+				len / STRUCT_BLOCK_ALIGN,
+			)
+		}
 	}
 
 	/// The blob data of the strings block.
-	pub fn strings_blob(&self) -> Result<&[u8]> {
+	pub fn strings_blob(&self) -> &[u8] {
 		let header = self.header();
 		let offset = u32::from_be(header.off_dt_strings) as usize;
 		let len = u32::from_be(header.size_dt_strings) as usize;
-		util::slice_get_with_len(self.blob_u8(), offset, len).ok_or(Error::BlockOutOfBounds)
+		// Safety: bounds check was done in Self::late_checks
+		unsafe { util::slice_get_with_len_unchecked(self.blob_u8(), offset, len) }
 	}
 
 	/// Gets a node from the struct block by (loosely-matching) path.

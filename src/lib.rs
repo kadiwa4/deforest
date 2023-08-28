@@ -1,4 +1,4 @@
-//! Parser for devicetree blobs compliant (hopefully) with version 0.4-rc1 of
+//! Parser for devicetree blobs compliant (hopefully) with version 0.4 of
 //! [the specification][spec].
 //!
 //! [spec]: https://www.devicetree.org/specifications
@@ -419,5 +419,15 @@ pub mod util {
 	/// offset.
 	pub(crate) fn slice_get_with_len<T>(slice: &[T], offset: usize, len: usize) -> Option<&[T]> {
 		slice.get(offset..offset + len)
+	}
+
+	/// Same as `<[_]>::get_unchecked` with a range except that it takes a length,
+	/// not an end offset.
+	pub(crate) unsafe fn slice_get_with_len_unchecked<T>(
+		slice: &[T],
+		offset: usize,
+		len: usize,
+	) -> &[T] {
+		slice.get_unchecked(offset..offset + len)
 	}
 }

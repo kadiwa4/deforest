@@ -1,12 +1,15 @@
 # Rust crate `devicetree`
 
-[Devicetree specification](https://www.devicetree.org/specifications/)
+Parser for devicetree blobs compliant (hopefully) with version 0.4 of
+[the specification][spec].
 
 This is in an early stage of development. Use [`fdt-rs`](https://lib.rs/crates/fdt-rs) instead.
 
 The crate tries to be efficient by avoiding allocations (it can be used without `alloc`), but I have no realistic benchmarks and the interface isn't the most ergonomic.
 
-Competitor crates:
+[spec]: https://www.devicetree.org/specifications
+
+## Competitor crates
 - [`device_tree`](https://github.com/mbr/device_tree-rs)
 - another crate called [`devicetree`](https://github.com/duanyu-yu/DeviceTree)
 - [`devicetree-tool`](https://github.com/michael2012z/devicetree-tool) (not very similar in what it's trying to achieve)

@@ -91,8 +91,7 @@ enum RawToken {
 impl Devicetree {
 	/// The devicetree's root node.
 	pub fn root_node(&self) -> Result<Node<'_>> {
-		self.struct_blob()?;
-
+		// bounds check was done in Self::late_checks
 		let mut cursor = Cursor {
 			depth: 0,
 			offset: u32::from_be(self.header().off_dt_struct),
@@ -144,7 +143,7 @@ impl Devicetree {
 						.ok_or(Error::InvalidPropertyHeader)?;
 
 					let name_blob = self
-						.strings_blob()?
+						.strings_blob()
 						.get(u32::from_be(header.nameoff) as usize..)
 						.ok_or(Error::InvalidString)?;
 

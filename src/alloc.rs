@@ -72,6 +72,8 @@ impl DevicetreeBuilder<'_> {
 		}
 		blob.extend([0; blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO]);
 
+		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity.
+		// the constructed Devicetree would pass all of the checks, so we can skip them
 		unsafe {
 			let ptr = blob.as_mut_ptr() as *mut u8;
 			core::ptr::copy_nonoverlapping(
@@ -85,9 +87,9 @@ impl DevicetreeBuilder<'_> {
 				strings_blob.len(),
 			);
 			blob.set_len(capacity);
-		}
 
-		Some(unsafe { Devicetree::from_box_unchecked(blob.into_boxed_slice()) })
+			Some(Devicetree::from_box_unchecked(blob.into_boxed_slice()))
+		}
 	}
 }
 
