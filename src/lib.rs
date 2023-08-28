@@ -9,8 +9,10 @@
 #![warn(unused_lifetimes, unused_macro_rules, unused_qualifications)]
 
 #[cfg(feature = "alloc")]
-extern crate alloc;
+extern crate alloc as std_alloc;
 
+#[cfg(feature = "alloc")]
+pub mod alloc;
 pub mod blob;
 pub mod prop_value;
 
@@ -26,7 +28,7 @@ use core::{
 
 use ascii::AsciiStr;
 use fallible_iterator::FallibleIterator;
-use zerocopy::Ref;
+use zerocopy::{AsBytes, FromBytes, Ref};
 
 use blob::{Cursor, Item, Node, Property};
 
@@ -147,20 +149,13 @@ impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {
 	type Error = Error;
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		const RESERVE_ENTRY_U64_SIZE: usize = 2;
-
-		let blob = self
-			.blob
-			.get(..RESERVE_ENTRY_U64_SIZE)
+		let raw = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
 			.ok_or(blob::Error::UnexpectedEnd)?;
-		self.blob = &self.blob[RESERVE_ENTRY_U64_SIZE..];
+		self.blob = &self.blob[blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO..];
 
-		let address = blob[0];
-		let size = blob[1];
-
-		let entry = (address != 0 || size != 0).then(|| ReserveEntry {
-			address: u64::from_be(address),
-			size: u64::from_be(size),
+		let entry = (raw.address != 0 || raw.size != 0).then(|| ReserveEntry {
+			address: u64::from_be(raw.address),
+			size: u64::from_be(raw.size),
 		});
 		Ok(entry)
 	}
@@ -348,146 +343,6 @@ pub trait PushDeserializedNode<'dtb> {
 	/// This function has to be called with the nodes in the same order as they
 	/// appear in the devicetree, without skipping any qualified ones.
 	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) -> Result<()>;
-}
-
-#[cfg(feature = "alloc")]
-mod alloc_impl {
-	use alloc::{boxed::Box, string::String, vec::Vec};
-
-	use ::fallible_iterator::FallibleIterator;
-
-	use crate::{blob::Item, prop_value::RegBlock, *};
-
-	impl Path for [String] {
-		type ComponentsIter<'a> = iter::Map<slice::Iter<'a, String>, fn(&String) -> &str>
-		where
-			Self: 'a;
-
-		fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
-			Ok(self.iter().map(String::as_str))
-		}
-	}
-
-	impl<const N: usize> Path for [String; N] {
-		type ComponentsIter<'a> = iter::Map<slice::Iter<'a, String>, fn(&String) -> &str>
-		where
-			Self: 'a;
-
-		fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
-			Ok(self.iter().map(String::as_str))
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Vec<u8> {
-		fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
-			Ok(blob_prop.value().to_vec())
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<[u8]> {
-		fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
-			Ok(blob_prop.value().into())
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Vec<u32> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<&[u32]>::deserialize(blob_prop, cx).map(<[u32]>::to_vec)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<[u32]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<&[u32]>::deserialize(blob_prop, cx).map(Box::from)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for String {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<&str>::deserialize(blob_prop, cx).map(String::from)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<str> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<&str>::deserialize(blob_prop, cx).map(Box::from)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Vec<&'dtb str> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			prop_value::Strings::deserialize(blob_prop, cx)?.collect()
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Vec<String> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			prop_value::Strings::deserialize(blob_prop, cx)?
-				.map(|s| Ok(s.into()))
-				.collect()
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Vec<Box<str>> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			prop_value::Strings::deserialize(blob_prop, cx)?
-				.map(|s| Ok(s.into()))
-				.collect()
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<[&'dtb str]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<Vec<&str>>::deserialize(blob_prop, cx).map(Vec::into_boxed_slice)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<[String]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<Vec<String>>::deserialize(blob_prop, cx).map(Vec::into_boxed_slice)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<[Box<str>]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			<Vec<Box<str>>>::deserialize(blob_prop, cx).map(Vec::into_boxed_slice)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Vec<RegBlock> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			prop_value::Reg::deserialize(blob_prop, cx).map(Vec::from_iter)
-		}
-	}
-
-	impl<'dtb> DeserializeProperty<'dtb> for Box<[RegBlock]> {
-		fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-			prop_value::Reg::deserialize(blob_prop, cx).map(Box::from_iter)
-		}
-	}
-
-	impl<'dtb> DeserializeNode<'dtb> for Vec<Item<'dtb>> {
-		fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
-			let mut items = blob_node.items();
-			Ok(((&mut items).collect::<Vec<_>>()?, items.cursor))
-		}
-	}
-
-	impl<'dtb> DeserializeNode<'dtb> for Box<[Item<'dtb>]> {
-		fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
-			let mut items = blob_node.items();
-			Ok(((&mut items).collect::<Box<[_]>>()?, items.cursor))
-		}
-	}
-
-	impl<'dtb, A: DeserializeNode<'dtb>> PushDeserializedNode<'dtb> for Vec<A> {
-		type Node = A;
-
-		fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) -> Result<()> {
-			self.push(node);
-			Ok(())
-		}
-	}
 }
 
 /// Utility functions.

@@ -10,16 +10,16 @@ mod token;
 pub use node::Node;
 pub use token::*;
 
-#[cfg(feature = "alloc")]
-use alloc::{boxed::Box, vec::Vec};
 use core::{
 	fmt::{self, Debug, Display, Formatter, Write},
 	mem::{size_of, size_of_val},
 	ptr::NonNull,
 	slice,
 };
+#[cfg(feature = "alloc")]
+use std_alloc::{boxed::Box, vec::Vec};
 
-use zerocopy::{AsBytes, Ref};
+use zerocopy::{AsBytes, FromBytes, FromZeroes, Ref};
 
 use crate::{util, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
@@ -74,25 +74,27 @@ impl From<Error> for crate::Error {
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-const DTB_ALIGN: usize = 8;
-const DTB_MAGIC: u32 = 0xd00d_feed_u32.to_be();
-const HEADER_SIZE: usize = size_of::<Header>();
-const LAST_COMPATIBLE_VERSION: u32 = 16;
+pub(crate) const DTB_ALIGN: usize = 8;
+pub(crate) const DTB_MAGIC: u32 = 0xd00d_feed_u32.to_be();
+pub(crate) const HEADER_SIZE: usize = size_of::<Header>();
+pub(crate) const LAST_COMPATIBLE_VERSION: u32 = 16;
 const MEMORY_RESERVATION_BLOCK_ALIGN: usize = 8;
+pub(crate) const RESERVE_ENTRY_SIZE_ALIGN_RATIO: usize = 2;
 const STRUCT_BLOCK_ALIGN: usize = 4;
 
+#[derive(AsBytes)]
 #[repr(C, align(8))]
-struct Header {
-	magic: u32,
-	totalsize: u32,
-	off_dt_struct: u32,
-	off_dt_strings: u32,
-	off_mem_rsvmap: u32,
-	version: u32,
-	last_comp_version: u32,
-	boot_cpuid_phys: u32,
-	size_dt_strings: u32,
-	size_dt_struct: u32,
+pub(crate) struct Header {
+	pub magic: u32,
+	pub totalsize: u32,
+	pub off_dt_struct: u32,
+	pub off_dt_strings: u32,
+	pub off_mem_rsvmap: u32,
+	pub version: u32,
+	pub last_comp_version: u32,
+	pub boot_cpuid_phys: u32,
+	pub size_dt_strings: u32,
+	pub size_dt_struct: u32,
 }
 
 /// Devicetree blob.
@@ -121,12 +123,8 @@ impl Devicetree {
 			return Err(Error::InvalidTotalsize);
 		}
 
-		// idk if its allowed, but sometimes the dtb's length is not divisible by 8
-		let slice_len = if size % 8 == 0 {
-			size / DTB_ALIGN
-		} else {
-			(size + 7) / DTB_ALIGN
-		};
+		// sometimes the dtb's length is not divisible by 8
+		let slice_len = (size + DTB_ALIGN - 1) / DTB_ALIGN;
 		Self::from_slice_internal(slice::from_raw_parts(ptr, slice_len))
 	}
 
@@ -156,25 +154,19 @@ impl Devicetree {
 	}
 
 	#[cfg(feature = "alloc")]
-	unsafe fn from_box_unchecked(blob: Box<[u64]>) -> Box<Self> {
+	pub(crate) unsafe fn from_box_unchecked(blob: Box<[u64]>) -> Box<Self> {
 		Box::from_raw(Box::into_raw(blob) as *mut Devicetree)
 	}
 
 	/// Constructs a devicetree from an unaligned slice containing a DTB.
 	#[cfg(feature = "alloc")]
 	pub fn from_unaligned(blob: &[u8]) -> Result<Box<Self>> {
-		let capacity_floor = blob.len() / DTB_ALIGN;
-		let capacity = if blob.len() % DTB_ALIGN != 0 {
-			capacity_floor + 1
-		} else {
-			capacity_floor
-		};
+		// sometimes the dtb's length is not divisible by 8
+		let capacity = (blob.len() + DTB_ALIGN - 1) / DTB_ALIGN;
 		let mut aligned_blob: Vec<u64> = Vec::with_capacity(capacity);
 
 		unsafe {
-			if capacity_floor != capacity {
-				*aligned_blob.as_mut_ptr().add(capacity_floor) = 0;
-			}
+			*aligned_blob.as_mut_ptr().add(capacity - 1) = 0;
 			core::ptr::copy_nonoverlapping(
 				blob.as_ptr(),
 				aligned_blob.as_mut_ptr() as *mut u8,
@@ -203,7 +195,7 @@ impl Devicetree {
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
 		};
-		// idk if its allowed, but sometimes the dtb's length is not divisible by 8
+		// sometimes the dtb's length is not divisible by 8
 		if usize::checked_sub(size_of_val(blob), size as usize).map_or(true, |d| d >= 8) {
 			return Err(Error::InvalidTotalsize);
 		}
@@ -242,6 +234,14 @@ impl Devicetree {
 		unsafe { &*(self as *const _ as *const Header) }
 	}
 
+	/// The exact byte size of the devicetree. This might be a bit smaller than
+	/// `size_of_val(dt)` (or `dt.blob_u8().len()`) because Rust's memory model
+	/// requires 8-byte-aligned types to also have a size that's a multiple of
+	/// 8, whereas the devicetree spec doesn't.
+	pub fn exact_size(&self) -> u32 {
+		u32::from_be(self.header().totalsize)
+	}
+
 	/// The devicetree blob specification version.
 	///
 	/// It has been at 17 ever since version 0.1 of the spec.
@@ -256,8 +256,8 @@ impl Devicetree {
 		LAST_COMPATIBLE_VERSION
 	}
 
-	/// The physical ID of the system's boot CPU.
-	pub fn boot_cpuid_phys(&self) -> u32 {
+	/// The ID of the system's physical boot CPU.
+	pub fn boot_core_id(&self) -> u32 {
 		u32::from_be(self.header().boot_cpuid_phys)
 	}
 
@@ -433,8 +433,15 @@ impl<'dtb> Display for Property<'dtb> {
 		f.write_str(self.name().map_err(|_| fmt::Error)?)?;
 		if let [ref rest @ .., last_byte] = *self.value {
 			f.write_str(" = ")?;
-			let is_strings = last_byte == 0 && {
+			let is_strings = 'is_strings: {
+				if last_byte != 0 {
+					break 'is_strings false;
+				}
 				// an all-zero value shouldn't be displayed as a bunch of empty strings
+				// (unless it's a single zero)
+				if rest.is_empty() {
+					break 'is_strings true;
+				}
 				let mut prev_was_printing_char = false;
 				rest.iter().all(|&b| {
 					match b {
@@ -445,6 +452,7 @@ impl<'dtb> Display for Property<'dtb> {
 					true
 				}) && prev_was_printing_char
 			};
+
 			if is_strings {
 				f.write_char('"')?;
 				for &b in rest {
@@ -494,4 +502,11 @@ impl<'dtb> Item<'dtb> {
 			Self::Child(node) => node.name(),
 		}
 	}
+}
+
+#[derive(AsBytes, FromBytes, FromZeroes)]
+#[repr(C, align(8))]
+pub(crate) struct RawReserveEntry {
+	pub address: u64,
+	pub size: u64,
 }

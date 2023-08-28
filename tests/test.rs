@@ -1,6 +1,7 @@
 use std::sync::OnceLock;
 
 use devicetree::{
+	alloc::DevicetreeBuilder,
 	blob::{Cursor, Devicetree},
 	fallible_iterator::FallibleIterator,
 	prop_value::{self, RegBlock},
@@ -115,4 +116,17 @@ fn derive_self_fields() {
 	assert_eq!(dma_node.start_cursor, Some(cursor));
 	assert_eq!(dma_node.name, "dma@7e007000");
 	assert_eq!(dma_node.unit_address.unwrap(), "7e007000");
+}
+
+#[test]
+fn build() {
+	let original = dt();
+	let mut builder = DevicetreeBuilder::default();
+	builder.boot_core_id = original.boot_core_id();
+	let reserve_entries: Vec<_> = original.reserve_entries().unwrap().collect().unwrap();
+	builder.reserve_entries = &reserve_entries;
+	builder.struct_blob = Some(original.struct_blob().unwrap());
+	builder.strings_blob = Some(original.strings_blob().unwrap());
+	let clone = builder.build().unwrap();
+	assert_eq!(original.blob(), clone.blob());
 }
