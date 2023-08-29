@@ -68,7 +68,7 @@ impl DevicetreeBuilder<'_> {
 			},
 		));
 		unsafe {
-			*blob.as_mut_ptr().add(capacity - 1) = 0;
+			blob.as_mut_ptr().add(capacity - 1).write(0);
 		}
 		blob.extend([0; blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO]);
 
@@ -133,19 +133,19 @@ impl<'dtb> DeserializeProperty<'dtb> for Vec<u32> {
 
 impl<'dtb> DeserializeProperty<'dtb> for Box<[u32]> {
 	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-		<&[u32]>::deserialize(blob_prop, cx).map(Box::from)
+		<&[u32]>::deserialize(blob_prop, cx).map(Self::from)
 	}
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for String {
 	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-		<&str>::deserialize(blob_prop, cx).map(String::from)
+		<&str>::deserialize(blob_prop, cx).map(Self::from)
 	}
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Box<str> {
 	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-		<&str>::deserialize(blob_prop, cx).map(Box::from)
+		<&str>::deserialize(blob_prop, cx).map(Self::from)
 	}
 }
 
@@ -191,27 +191,27 @@ impl<'dtb> DeserializeProperty<'dtb> for Box<[Box<str>]> {
 
 impl<'dtb> DeserializeProperty<'dtb> for Vec<RegBlock> {
 	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-		prop_value::Reg::deserialize(blob_prop, cx).map(Vec::from_iter)
+		prop_value::Reg::deserialize(blob_prop, cx).map(Self::from_iter)
 	}
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Box<[RegBlock]> {
 	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-		prop_value::Reg::deserialize(blob_prop, cx).map(Box::from_iter)
+		prop_value::Reg::deserialize(blob_prop, cx).map(Self::from_iter)
 	}
 }
 
 impl<'dtb> DeserializeNode<'dtb> for Vec<Item<'dtb>> {
 	fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
 		let mut items = blob_node.items();
-		Ok(((&mut items).collect::<Vec<_>>()?, items.cursor))
+		Ok(((&mut items).collect::<Self>()?, items.cursor))
 	}
 }
 
 impl<'dtb> DeserializeNode<'dtb> for Box<[Item<'dtb>]> {
 	fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
 		let mut items = blob_node.items();
-		Ok(((&mut items).collect::<Box<[_]>>()?, items.cursor))
+		Ok(((&mut items).collect::<Self>()?, items.cursor))
 	}
 }
 

@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::{ptr::NonNull, sync::OnceLock};
 
 use devicetree::{
 	alloc::DevicetreeBuilder,
@@ -129,4 +129,17 @@ fn build() {
 	builder.strings_blob = Some(original.strings_blob());
 	let clone = builder.build().unwrap();
 	assert_eq!(original.blob(), clone.blob());
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // MIRI warns on pointer provenance violations
+fn from_ptr() {
+	let original = dt();
+	let from_ptr = unsafe {
+		// kill pointer provenance; this code doesn't work with strict provenance
+		let ptr = NonNull::new(original.blob().as_ptr() as usize as *mut u64).unwrap();
+		Devicetree::from_ptr(ptr)
+	}
+	.unwrap();
+	assert_eq!(original.blob().len(), from_ptr.blob().len());
 }

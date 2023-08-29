@@ -421,7 +421,7 @@ impl<'dtb> PushDeserializedNode<'dtb> for NamedRange<'dtb> {
 
 	fn push_node(&mut self, node: Self::Node, _cx: NodeContext<'_>) -> Result<()> {
 		let Some((_, ref mut base)) = self.0 else {
-			*self = Self::new_single(node)?;
+			*self = Self::new_single(&node)?;
 			return Ok(());
 		};
 		let cursor = node.start_cursor();
@@ -436,7 +436,7 @@ impl<'dtb> NamedRange<'dtb> {
 	pub const EMPTY: Self = Self(None);
 
 	/// Creates a new range spanning a single node.
-	pub fn new_single(node: Node<'dtb>) -> Result<Self> {
+	pub fn new_single(node: &Node<'dtb>) -> Result<Self> {
 		let cursor = node.start_cursor();
 		Ok(Self(Some((
 			node.split_name()?.0,
@@ -454,7 +454,7 @@ impl<'dtb> NamedRange<'dtb> {
 	}
 
 	pub fn len(self) -> usize {
-		self.0.map_or(0, |(_, b)| b.len.try_into().unwrap())
+		self.0.map_or(0, |(_, b)| b.len as usize)
 	}
 
 	pub fn is_empty(self) -> bool {

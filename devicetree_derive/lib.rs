@@ -332,8 +332,10 @@ Valid forms are:
 		Some((kind, item_name))
 	});
 	let ret = relevant_attrs.next()?;
-	if relevant_attrs.next().is_some() {
-		panic!("duplicate attributes on field `{}`", field_name());
-	}
+	assert!(
+		relevant_attrs.next().is_none(),
+		"duplicate attributes on field `{}`",
+		field_name()
+	);
 	Some(ret)
 }

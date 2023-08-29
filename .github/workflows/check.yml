@@ -9,20 +9,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  fmt:
+  check:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Install MIRI
+      run: |
+        rustup toolchain install nightly --profile minimal -c miri,rust-src
+        cargo +nightly miri setup
     - name: Check formatting
       run: cargo fmt --check
-  check:
+    - name: Run Clippy
+      run: cargo clippy --all-features
+    - name: Run tests
+      run: cargo test --all-features
+    - name: Run tests with MIRI
+      run: cargo +nightly miri test --all-features
+
+  check-specific-features:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        features: ["", "alloc derive", "std derive"]
+        features: ["", "alloc derive"]
     steps:
     - uses: actions/checkout@v3
     - name: Run Clippy
-      run: cargo clippy --features "${{ matrix.features }}"
+      run: cargo clippy -F "${{ matrix.features }}"
     - name: Run tests
-      run: cargo test --features "${{ matrix.features }}" --message-format short
+      run: cargo test -F "${{ matrix.features }}"

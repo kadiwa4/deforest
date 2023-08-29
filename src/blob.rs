@@ -110,8 +110,13 @@ impl Devicetree {
 	/// required.
 	///
 	/// # Safety
+	/// Only use this if necessary. This function doesn't work with pointer
+	/// provenance and doesn't pass [Stacked Borrows] rules.
+	///
 	/// The pointer has to point to a valid DTB. Some safety checks are done
 	/// nonetheless. Alignment is not checked.
+	///
+	/// [Stacked Borrows]: https://plv.mpi-sws.org/rustbelt/stacked-borrows/
 	pub unsafe fn from_ptr(ptr: NonNull<u64>) -> Result<&'static Self> {
 		let ptr: *const u64 = ptr.as_ptr();
 		let blob = slice::from_raw_parts(ptr, HEADER_SIZE / DTB_ALIGN);
@@ -156,7 +161,7 @@ impl Devicetree {
 
 	#[cfg(feature = "alloc")]
 	pub(crate) unsafe fn from_box_unchecked(blob: Box<[u64]>) -> Box<Self> {
-		Box::from_raw(Box::into_raw(blob) as *mut Devicetree)
+		Box::from_raw(Box::into_raw(blob) as *mut Self)
 	}
 
 	/// Constructs a devicetree from an unaligned slice containing a DTB.
@@ -168,7 +173,7 @@ impl Devicetree {
 
 		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity
 		unsafe {
-			*aligned_blob.as_mut_ptr().add(capacity - 1) = 0;
+			aligned_blob.as_mut_ptr().add(capacity - 1).write(0);
 			core::ptr::copy_nonoverlapping(
 				blob.as_ptr(),
 				aligned_blob.as_mut_ptr() as *mut u8,
@@ -198,6 +203,9 @@ impl Devicetree {
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
 		}? as usize;
+		if size_of_val(blob) < size {
+			return Err(Error::InvalidTotalsize);
+		}
 
 		// sometimes the dtb's length is not divisible by 8
 		Ok((size + DTB_ALIGN - 1) / DTB_ALIGN)
@@ -222,11 +230,10 @@ impl Devicetree {
 	unsafe fn totalsize(blob: &[u64]) -> Result<u32> {
 		let header = blob as *const _ as *const Header;
 		let size = u32::from_be((*header).totalsize);
-		if (HEADER_SIZE..=size_of_val(blob)).contains(&(size as usize)) {
-			Ok(size)
-		} else {
-			Err(Error::InvalidTotalsize)
+		if size < HEADER_SIZE as u32 {
+			return Err(Error::InvalidTotalsize);
 		}
+		Ok(size)
 	}
 
 	fn late_checks(&self) -> Result<()> {
