@@ -391,7 +391,12 @@ impl Devicetree {
 
 impl Debug for Devicetree {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Devicetree").finish()
+		f.debug_struct("Devicetree")
+			.field("size", &self.exact_size())
+			.field("version", &self.version())
+			.field("last_comp_version", &self.last_comp_version())
+			.field("boot_core_id", &self.boot_core_id())
+			.finish_non_exhaustive()
 	}
 }
 
