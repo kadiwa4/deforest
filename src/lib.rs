@@ -266,6 +266,7 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
+	/// Gives a devicetree property value as a big-endian u32 slice.
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		match Ref::new_slice(blob_prop.value()) {
 			Some(val) => Ok(val.into_slice()),
@@ -275,6 +276,7 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for u32 {
+	/// Gives a devicetree property value as a native-endian u32.
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		match blob_prop.value().try_into() {
 			Ok(arr) => Ok(Self::from_be_bytes(arr)),
@@ -284,6 +286,7 @@ impl<'dtb> DeserializeProperty<'dtb> for u32 {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for u64 {
+	/// Gives a devicetree property value as a native-endian u64.
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		match blob_prop.value().try_into() {
 			Ok(arr) => Ok(Self::from_be_bytes(arr)),

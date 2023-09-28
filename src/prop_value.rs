@@ -115,7 +115,7 @@ impl Default for Strings<'static> {
 }
 
 /// Iterator over the _(address, length)_ pairs of `reg`'s value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Reg<'dtb> {
 	value: &'dtb [u32],
 	address_cells: Cells,
@@ -180,12 +180,12 @@ impl DoubleEndedIterator for Reg<'_> {
 impl ExactSizeIterator for Reg<'_> {}
 impl FusedIterator for Reg<'_> {}
 
-/// _(address, length)_ pair contained in [`Reg`].
+/// _(address, length)_ pair contained in [`reg`](Reg).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RegBlock(pub u128, pub u128);
 
 impl RegBlock {
-	/// Parses an element of a `reg` property.
+	/// Parses an element of a [`reg`](Reg) property.
 	///
 	/// Returns something only if the length of the value is a multiple of 4 and
 	/// none of the cell counts are bigger than 16 bytes each. The 16-byte limit
@@ -198,76 +198,141 @@ impl RegBlock {
 	}
 }
 
-/// Iterator over the _(child-bus-address, parent-bus-address, length)_ triplets of `ranges`' value.
-#[derive(Clone, Debug, Default)]
+/// Value of `ranges`.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Ranges<'dtb> {
 	value: &'dtb [u32],
 	address_cells: Cells,
-	size_cells: Cells,
 }
 
 impl<'dtb> Ranges<'dtb> {
-	/// Creates a new iterator over the _(address, length)_ pairs of the value.
-	pub fn new(value: &'dtb [u32], address_cells: Cells, size_cells: Cells) -> Result<Self> {
-		if address_cells > 4 || size_cells > 4 {
-			return Err(Error::TooManyCells);
-		}
-		if value.len() % (address_cells * 2 + size_cells) as usize != 0 {
-			return Err(Error::UnsuitableProperty);
-		}
-
-		Ok(Self {
-			value,
-			address_cells,
-			size_cells,
-		})
+	/// Creates a new iterator over the _(child-bus-address, parent-bus-address,
+	/// length)_ triplets of the value.
+	pub fn iter(
+		self,
+		child_address_cells: Cells,
+		child_size_cells: Cells,
+	) -> Result<RangesIter<'dtb>> {
+		RangesIter::new(
+			self.value,
+			child_address_cells,
+			self.address_cells,
+			child_size_cells,
+		)
 	}
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Ranges<'dtb> {
 	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
-		if cx.address_cells > 4 || cx.size_cells > 4 {
+		if cx.address_cells > 4 {
 			return Err(Error::TooManyCells);
 		}
-		let value = <&[u32]>::deserialize(blob_prop, cx)?;
-		Self::new(value, cx.address_cells, cx.size_cells)
+		Ok(Self {
+			value: <&[u32]>::deserialize(blob_prop, cx)?,
+			address_cells: cx.address_cells,
+		})
 	}
 }
 
-impl Iterator for Ranges<'_> {
+/// Iterator over the _(child-bus-address, parent-bus-address, length)_ triplets
+/// of [`ranges`](Ranges)' value.
+///
+/// # Examples
+/// ```
+/// # use devicetree::prop_value::{RangesBlock, RangesIter};
+///
+/// let data = [
+///     0x0200_0000, 0x0000_0000, 0x4000_0000,
+///     0x0000_0000, 0x4000_0000,
+///     0x0000_0000, 0x4000_0000,
+/// ]
+/// .map(u32::to_be);
+/// let iter = RangesIter::new(&data, 3, 2, 2).unwrap();
+/// let expected = RangesBlock(
+///     0x0200_0000_0000_0000_4000_0000,
+///     0x4000_0000,
+///     0x4000_0000,
+/// );
+/// assert_eq!(iter.collect::<Vec<_>>(), [expected]);
+/// ```
+#[derive(Clone, Debug)]
+pub struct RangesIter<'dtb> {
+	value: &'dtb [u32],
+	child_address_cells: Cells,
+	address_cells: Cells,
+	child_size_cells: Cells,
+}
+
+impl<'dtb> RangesIter<'dtb> {
+	/// Creates a new iterator over the _(child-bus-address, parent-bus-address,
+	/// length)_ triplets of a [`ranges`](Ranges) value.
+	pub fn new(
+		value: &'dtb [u32],
+		child_address_cells: Cells,
+		address_cells: Cells,
+		child_size_cells: Cells,
+	) -> Result<Self> {
+		if child_address_cells > 4 || address_cells > 4 || child_size_cells > 4 {
+			return Err(Error::TooManyCells);
+		}
+		if value.len() as u32 % (child_address_cells + address_cells + child_size_cells) as u32 != 0
+		{
+			return Err(Error::UnsuitableProperty);
+		}
+
+		Ok(Self {
+			value,
+			child_address_cells,
+			address_cells,
+			child_size_cells,
+		})
+	}
+
+	fn ranges_block_cells(&self) -> Cells {
+		self.child_address_cells + self.address_cells + self.child_size_cells
+	}
+}
+
+impl Iterator for RangesIter<'_> {
 	type Item = RangesBlock;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		RangesBlock::parse(&mut self.value, self.address_cells, self.size_cells)
+		RangesBlock::parse(
+			&mut self.value,
+			self.child_address_cells,
+			self.address_cells,
+			self.child_size_cells,
+		)
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.value.len() / (self.address_cells * 2 + self.size_cells) as usize;
-		(len, Some(len))
+		let len = self.value.len() as u32 / self.ranges_block_cells() as u32;
+		(len as usize, Some(len as usize))
 	}
 
 	fn nth(&mut self, n: usize) -> Option<RangesBlock> {
-		let idx = usize::checked_mul(n, (self.address_cells * 2 + self.size_cells) as usize)?;
-		self.value = self.value.get(idx..)?;
+		let idx = u32::checked_mul(n as u32, self.ranges_block_cells() as u32)?;
+		self.value = self.value.get(idx as usize..)?;
 		self.next()
 	}
 }
 
-impl DoubleEndedIterator for Ranges<'_> {
+impl DoubleEndedIterator for RangesIter<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		let length = util::parse_cells_back(&mut self.value, self.size_cells)?;
+		let length = util::parse_cells_back(&mut self.value, self.child_size_cells)?;
 		let parent_bus_address =
 			util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
 		let child_bus_address =
-			util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
+			util::parse_cells_back(&mut self.value, self.child_address_cells).unwrap();
 		Some(RangesBlock(child_bus_address, parent_bus_address, length))
 	}
 }
 
-impl ExactSizeIterator for Ranges<'_> {}
-impl FusedIterator for Ranges<'_> {}
+impl ExactSizeIterator for RangesIter<'_> {}
+impl FusedIterator for RangesIter<'_> {}
 
-/// _(child-bus-address, parent-bus-address, length)_ triplets in [`Ranges`].
+/// _(child-bus-address, parent-bus-address, length)_ triplets in
+/// [`ranges`](Ranges). Obtained from [`RangesIter`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RangesBlock(pub u128, pub u128, pub u128);
 
@@ -278,10 +343,15 @@ impl RangesBlock {
 	/// none of the cell counts are bigger than 16 bytes each. The 16-byte limit
 	/// is not part of the spec. The fields each default to 0 if zero cells are
 	/// to be parsed.
-	pub fn parse(bytes: &mut &[u32], address_cells: Cells, size_cells: Cells) -> Option<Self> {
-		let child_bus_address = util::parse_cells(bytes, address_cells)?;
+	pub fn parse(
+		bytes: &mut &[u32],
+		child_address_cells: Cells,
+		address_cells: Cells,
+		child_size_cells: Cells,
+	) -> Option<Self> {
+		let child_bus_address = util::parse_cells(bytes, child_address_cells)?;
 		let parent_bus_address = util::parse_cells(bytes, address_cells)?;
-		let length = util::parse_cells(bytes, size_cells)?;
+		let length = util::parse_cells(bytes, child_size_cells)?;
 		Some(Self(child_bus_address, parent_bus_address, length))
 	}
 }

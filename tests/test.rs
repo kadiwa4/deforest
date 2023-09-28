@@ -143,3 +143,23 @@ fn from_ptr() {
 	.unwrap();
 	assert_eq!(original.blob().len(), from_ptr.blob().len());
 }
+
+#[test]
+fn reg_value() {
+	#[derive(Default, DeserializeNode)]
+	struct SocNode<'dtb> {
+		#[dt_child]
+		spi: SpiNode<'dtb>,
+	}
+
+	#[derive(Default, DeserializeNode)]
+	struct SpiNode<'dtb> {
+		reg: prop_value::Reg<'dtb>,
+	}
+
+	let soc_node = dt().get_node_strict(&["soc"]).unwrap().unwrap();
+	let (soc_node, _) = SocNode::deserialize(&soc_node, NodeContext::default()).unwrap();
+	let mut reg = soc_node.spi.reg;
+	assert_eq!(reg.next(), Some(RegBlock(0x7e20_4000, 0x1000)));
+	assert!(reg.next().is_none());
+}
