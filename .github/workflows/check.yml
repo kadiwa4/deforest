@@ -15,7 +15,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         show-progress: false
-    - name: Install MIRI
+    - name: Install Miri
       run: |
         rustup toolchain install nightly --profile minimal -c miri,rust-src
         cargo +nightly miri setup
@@ -25,7 +25,7 @@ jobs:
       run: cargo clippy --all-features
     - name: Run tests
       run: cargo test --all-features
-    - name: Run tests with MIRI
+    - name: Run tests with Miri
       run: cargo +nightly miri test --all-features
 
   check-specific-features:
@@ -34,7 +34,7 @@ jobs:
       matrix:
         features: ["", "alloc derive"]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Run Clippy
       run: cargo clippy -F "${{ matrix.features }}"
     - name: Run tests

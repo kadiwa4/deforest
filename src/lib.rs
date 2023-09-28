@@ -1,5 +1,5 @@
-//! Parser for devicetree blobs compliant (hopefully) with version 0.4 of
-//! [the specification][spec].
+//! Efficient `#![no_std]` parser for devicetree blobs compliant (hopefully)
+//! with version 0.4 of [the specification][spec].
 //!
 //! [spec]: https://www.devicetree.org/specifications
 

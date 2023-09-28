@@ -132,7 +132,7 @@ fn build() {
 }
 
 #[test]
-#[cfg_attr(miri, ignore)] // MIRI warns on pointer provenance violations
+#[cfg_attr(miri, ignore)] // miri warns on pointer provenance violations
 fn from_ptr() {
 	let original = dt();
 	let from_ptr = unsafe {

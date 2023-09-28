@@ -1,7 +1,6 @@
 # Rust crate `devicetree`
 
-Parser for devicetree blobs compliant (hopefully) with version 0.4 of
-[the specification][spec].
+Efficient `#![no_std]` parser for devicetree blobs compliant (hopefully) with version 0.4 of [the specification][spec].
 
 This is in an early stage of development. Use [`fdt-rs`](https://lib.rs/crates/fdt-rs) instead.
 
