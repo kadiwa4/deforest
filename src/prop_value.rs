@@ -1,7 +1,10 @@
 //! Types representing property values.
 
 use crate::{blob::Property, util, Cells, DeserializeProperty, Error, NodeContext, Result};
-use core::iter::FusedIterator;
+use core::{
+	fmt::{Display, Formatter},
+	iter::FusedIterator,
+};
 
 use fallible_iterator::{DoubleEndedFallibleIterator, FallibleIterator};
 
@@ -47,22 +50,71 @@ impl<'dtb> DeserializeProperty<'dtb> for SizeCells {
 	}
 }
 
+/// Value of `status`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Status<'a> {
+	#[default]
+	Ok,
+	Disabled,
+	Reserved,
+	Fail,
+	FailCondition(&'a str),
+}
+
+impl<'dtb> DeserializeProperty<'dtb> for Status<'dtb> {
+	fn deserialize(blob_prop: Property<'dtb>, cx: NodeContext<'_>) -> Result<Self> {
+		<&str>::deserialize(blob_prop, cx)?.try_into()
+	}
+}
+
+impl<'a> TryFrom<&'a str> for Status<'a> {
+	type Error = Error;
+
+	fn try_from(string: &'a str) -> Result<Self, Self::Error> {
+		let ret = match string {
+			"okay" => Self::Ok,
+			"disabled" => Self::Disabled,
+			"reserved" => Self::Reserved,
+			"fail" => Self::Fail,
+			_ => Self::FailCondition(
+				string
+					.strip_prefix("fail-")
+					.ok_or(Error::UnsuitableProperty)?,
+			),
+		};
+		Ok(ret)
+	}
+}
+
+impl Display for Status<'_> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+		match *self {
+			Self::Ok => f.write_str("okay"),
+			Self::Disabled => f.write_str("disabled"),
+			Self::Reserved => f.write_str("reserved"),
+			Self::Fail => f.write_str("fail"),
+			Self::FailCondition(condition) => write!(f, "fail-{condition}"),
+		}
+	}
+}
+
 /// Iterator over the strings contained in the property's value.
 ///
 /// Fused (see [`core::iter::FusedIterator`]).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Strings<'dtb> {
-	value: &'dtb [u8],
+pub struct Strings<'a> {
+	value: &'a [u8],
 }
 
-impl<'dtb> Strings<'dtb> {
+impl<'a> Strings<'a> {
 	/// Empty iterator. Cannot be obtained from deserializing a property.
 	pub const EMPTY: Self = Self { value: &[] };
 
 	/// Creates a new iterator over the strings contained in the value.
 	///
 	/// Returns `None` if the value does not end in a null byte.
-	pub fn new(value: &'dtb [u8]) -> Option<Self> {
+	pub fn new(value: &'a [u8]) -> Option<Self> {
 		matches!(value, [.., 0]).then_some(Self { value })
 	}
 }
@@ -73,8 +125,8 @@ impl<'dtb> DeserializeProperty<'dtb> for Strings<'dtb> {
 	}
 }
 
-impl<'dtb> FallibleIterator for Strings<'dtb> {
-	type Item = &'dtb str;
+impl<'a> FallibleIterator for Strings<'a> {
+	type Item = &'a str;
 	type Error = Error;
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
@@ -96,7 +148,7 @@ impl<'dtb> FallibleIterator for Strings<'dtb> {
 	}
 }
 
-impl<'dtb> DoubleEndedFallibleIterator for Strings<'dtb> {
+impl<'a> DoubleEndedFallibleIterator for Strings<'a> {
 	fn next_back(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		let [value @ .., _] = self.value else {
 			return Ok(None);
@@ -108,7 +160,7 @@ impl<'dtb> DoubleEndedFallibleIterator for Strings<'dtb> {
 	}
 }
 
-impl Default for Strings<'static> {
+impl<'a> Default for Strings<'a> {
 	fn default() -> Self {
 		Self::EMPTY
 	}

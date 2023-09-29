@@ -9,7 +9,7 @@ use fallible_iterator::FallibleIterator;
 
 use crate::{
 	blob::{self, Cursor, Devicetree, Item, Property, Token, TOKEN_SIZE},
-	util, Error, NodeContext, PushDeserializedNode, Result,
+	Error, NodeContext, PushDeserializedNode, Result,
 };
 
 /// A node of the tree structure in a [`Devicetree`] blob's struct block.
@@ -29,7 +29,7 @@ impl<'dtb> Node<'dtb> {
 
 	/// The node's name.
 	pub fn name(&self) -> blob::Result<&'dtb str> {
-		util::str_from_ascii(self.name).ok_or(blob::Error::InvalidString)
+		crate::util::str_from_ascii(self.name).ok_or(blob::Error::InvalidString)
 	}
 
 	/// The name as it would show up in a devicetree source file.
@@ -50,7 +50,7 @@ impl<'dtb> Node<'dtb> {
 	///
 	/// There cannot be more than one `@`.
 	pub fn split_name(&self) -> Result<(&'dtb str, Option<&'dtb str>)> {
-		util::split_node_name(self.name()?)
+		crate::util::split_node_name(self.name()?)
 	}
 
 	/// Cursor pointing to this node's [`Token`].
@@ -115,7 +115,7 @@ impl<'dtb> Node<'dtb> {
 	/// has to be unambiguous.
 	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
 		let mut iter = Children(Items::new(self, self.contents));
-		if util::split_node_name(name)?.1.is_some() {
+		if crate::util::split_node_name(name)?.1.is_some() {
 			iter.find(|n| Ok(n.name()? == name))
 		} else if let Some((candidate, (_, candidate_addr))) = (&mut iter)
 			.map(|n| n.split_name().map(|split| (n, split)))

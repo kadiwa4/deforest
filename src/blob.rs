@@ -21,7 +21,7 @@ use std_alloc::{boxed::Box, vec::Vec};
 
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Ref};
 
-use crate::{util, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
+use crate::{DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
 /// Any low level, technical error caused by this crate.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -315,7 +315,7 @@ impl Devicetree {
 
 		// Safety: bounds check was done in Self::late_checks
 		unsafe {
-			util::slice_get_with_len_unchecked(
+			crate::util::slice_get_with_len_unchecked(
 				self.blob_u32(),
 				offset / STRUCT_BLOCK_ALIGN,
 				len / STRUCT_BLOCK_ALIGN,
@@ -329,7 +329,7 @@ impl Devicetree {
 		let offset = u32::from_be(header.off_dt_strings) as usize;
 		let len = u32::from_be(header.size_dt_strings) as usize;
 		// Safety: bounds check was done in Self::late_checks
-		unsafe { util::slice_get_with_len_unchecked(self.blob_u8(), offset, len) }
+		unsafe { crate::util::slice_get_with_len_unchecked(self.blob_u8(), offset, len) }
 	}
 
 	/// Gets a node from the struct block by (loosely-matching) path.
@@ -426,7 +426,8 @@ impl<'dtb> Property<'dtb> {
 	/// # Errors
 	/// Fails if the string is invalid.
 	pub fn name(self) -> Result<&'dtb str> {
-		util::str_from_ascii(util::get_c_str(self.name_blob)?).ok_or(Error::InvalidString)
+		crate::util::str_from_ascii(crate::util::get_c_str(self.name_blob)?)
+			.ok_or(Error::InvalidString)
 	}
 
 	/// The property's value.

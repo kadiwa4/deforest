@@ -169,7 +169,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 
 	let cx_deserialize_node = |child_stmts| {
 		quote! {
-			let cursor = cx.deserialize_node(
+			let (_, cursor) = cx.deserialize_node(
 				blob_node,
 				|name, prop| {
 					match name {

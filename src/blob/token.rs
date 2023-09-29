@@ -33,6 +33,8 @@ impl<'dtb> Token<'dtb> {
 
 /// A position inside the [`Devicetree`] blob's struct block.
 ///
+/// You can think of this as a byte offset from the blob's start address, but it
+/// is a little more complicated in reality.
 /// Can be obtained from [`Node::content_cursor`] and advanced using
 /// [`Devicetree::next_token`].
 ///

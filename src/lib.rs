@@ -43,6 +43,7 @@ pub enum Error {
 	InvalidNodeName,
 	InvalidPath,
 	TooManyCells,
+	UnsuitableNode,
 	UnsuitableProperty,
 }
 
@@ -57,6 +58,7 @@ impl Display for Error {
 			InvalidNodeName => "invalid node name",
 			InvalidPath => "invalid path",
 			TooManyCells => "too many cells",
+			UnsuitableNode => "unsuitable node",
 			UnsuitableProperty => "unsuitable property",
 		};
 		write!(f, "devicetree error: {description}")
@@ -197,7 +199,7 @@ impl<'a> NodeContext<'a> {
 		blob_node: &Node<'dtb>,
 		mut f_prop: impl FnMut(&'dtb str, Property<'dtb>) -> Result<()>,
 		mut f_child: impl FnMut(Node<'dtb>, Self, &mut Cursor) -> Result<()>,
-	) -> Result<Cursor> {
+	) -> Result<(Self, Cursor)> {
 		let mut child_cx = Self {
 			custom: self.custom,
 			..Self::default()
@@ -225,7 +227,7 @@ impl<'a> NodeContext<'a> {
 				}
 			}
 		}
-		Ok(items.cursor)
+		Ok((child_cx, items.cursor))
 	}
 }
 
