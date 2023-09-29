@@ -2,10 +2,10 @@ use std::{ptr::NonNull, sync::OnceLock};
 
 use devicetree::{
 	alloc::DevicetreeBuilder,
-	blob::{Cursor, Devicetree},
+	blob::Devicetree,
 	fallible_iterator::FallibleIterator,
 	prop_value::{self, RegBlock},
-	DeserializeNode, DeserializeProperty, NodeContext,
+	DeserializeProperty, NodeContext,
 };
 
 const UNALIGNED_BLOB: &[u8] = include_bytes!("tree.dtb");
@@ -97,28 +97,6 @@ fn multiple_children() {
 }
 
 #[test]
-fn derive_self_fields() {
-	#[derive(Default, DeserializeNode)]
-	struct DmaNode<'dtb> {
-		#[dt_self(start_cursor)]
-		start_cursor: Option<Cursor>,
-		#[dt_self(name)]
-		name: &'dtb str,
-		#[dt_self(unit_address)]
-		unit_address: Option<String>,
-	}
-
-	let dma_node = dt().get_node(&["soc", "dma"]).unwrap().unwrap();
-	let cursor = dma_node.start_cursor();
-	let dma_node = DmaNode::deserialize(&dma_node, NodeContext::default())
-		.unwrap()
-		.0;
-	assert_eq!(dma_node.start_cursor, Some(cursor));
-	assert_eq!(dma_node.name, "dma@7e007000");
-	assert_eq!(dma_node.unit_address.unwrap(), "7e007000");
-}
-
-#[test]
 fn build() {
 	let original = dt();
 	let mut builder = DevicetreeBuilder::default();
@@ -144,22 +122,50 @@ fn from_ptr() {
 	assert_eq!(original.blob().len(), from_ptr.blob().len());
 }
 
-#[test]
-fn reg_value() {
-	#[derive(Default, DeserializeNode)]
-	struct SocNode<'dtb> {
-		#[dt_child]
-		spi: SpiNode<'dtb>,
+#[cfg(feature = "derive")]
+mod derive {
+	use super::*;
+	use devicetree::{blob::Cursor, DeserializeNode};
+
+	#[test]
+	fn self_fields() {
+		#[derive(Default, DeserializeNode)]
+		struct DmaNode<'dtb> {
+			#[dt_self(start_cursor)]
+			start_cursor: Option<Cursor>,
+			#[dt_self(name)]
+			name: &'dtb str,
+			#[dt_self(unit_address)]
+			unit_address: Option<String>,
+		}
+
+		let dma_node = dt().get_node(&["soc", "dma"]).unwrap().unwrap();
+		let cursor = dma_node.start_cursor();
+		let dma_node = DmaNode::deserialize(&dma_node, NodeContext::default())
+			.unwrap()
+			.0;
+		assert_eq!(dma_node.start_cursor, Some(cursor));
+		assert_eq!(dma_node.name, "dma@7e007000");
+		assert_eq!(dma_node.unit_address.unwrap(), "7e007000");
 	}
 
-	#[derive(Default, DeserializeNode)]
-	struct SpiNode<'dtb> {
-		reg: prop_value::Reg<'dtb>,
-	}
+	#[test]
+	fn parse_reg_value() {
+		#[derive(Default, DeserializeNode)]
+		struct SocNode<'dtb> {
+			#[dt_child]
+			spi: SpiNode<'dtb>,
+		}
 
-	let soc_node = dt().get_node_strict(&["soc"]).unwrap().unwrap();
-	let (soc_node, _) = SocNode::deserialize(&soc_node, NodeContext::default()).unwrap();
-	let mut reg = soc_node.spi.reg;
-	assert_eq!(reg.next(), Some(RegBlock(0x7e20_4000, 0x1000)));
-	assert!(reg.next().is_none());
+		#[derive(Default, DeserializeNode)]
+		struct SpiNode<'dtb> {
+			reg: prop_value::Reg<'dtb>,
+		}
+
+		let soc_node = dt().get_node_strict(&["soc"]).unwrap().unwrap();
+		let (soc_node, _) = SocNode::deserialize(&soc_node, NodeContext::default()).unwrap();
+		let mut reg = soc_node.spi.reg;
+		assert_eq!(reg.next(), Some(RegBlock(0x7e20_4000, 0x1000)));
+		assert!(reg.next().is_none());
+	}
 }
