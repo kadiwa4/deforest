@@ -21,58 +21,9 @@ use std_alloc::{boxed::Box, vec::Vec};
 
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Ref};
 
-use crate::{DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
+use crate::{BlobError, DeserializeNode, DeserializeProperty, NodeContext, Path, ReserveEntries};
 
-/// Any low level, technical error caused by this crate.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Error {
-	BlockOutOfBounds,
-	IncompatibleVersion,
-	InvalidPropertyHeader,
-	InvalidRootNode,
-	InvalidString,
-	InvalidTotalsize,
-	NoMagicSignature,
-	UnalignedBlock,
-	UnexpectedEnd,
-	UnexpectedEndToken,
-	UnexpectedEndNodeToken,
-	UnknownToken,
-}
-
-impl Display for Error {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		use Error::*;
-
-		let description = match *self {
-			BlockOutOfBounds => "block out of bounds",
-			IncompatibleVersion => "incompatible devicetree version",
-			InvalidPropertyHeader => "invalid property header",
-			InvalidRootNode => "invalid root node",
-			InvalidString => "invalid string",
-			InvalidTotalsize => "invalid totalsize field",
-			NoMagicSignature => "no magic signature",
-			UnalignedBlock => "unaligned block",
-			UnexpectedEnd => "unexpected end",
-			UnexpectedEndToken => "unexpected END token",
-			UnexpectedEndNodeToken => "unexpected END_NODE token",
-			UnknownToken => "unknown token",
-		};
-		write!(f, "devicetree blob error: {description}")
-	}
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
-
-impl From<Error> for crate::Error {
-	fn from(err: Error) -> Self {
-		Self::Blob(err)
-	}
-}
-
-pub type Result<T, E = Error> = core::result::Result<T, E>;
+type Result<T, E = BlobError> = core::result::Result<T, E>;
 
 pub(crate) const DTB_ALIGN: usize = 8;
 pub(crate) const DTB_MAGIC: u32 = 0xd00d_feed_u32.to_be();
@@ -125,7 +76,7 @@ impl Devicetree {
 		let size = Self::totalsize(blob)? as usize;
 		if usize::overflowing_add(ptr as usize, size).1 {
 			// the buffer wraps around
-			return Err(Error::InvalidTotalsize);
+			return Err(BlobError::InvalidTotalsize);
 		}
 
 		// sometimes the dtb's length is not divisible by 8
@@ -196,7 +147,7 @@ impl Devicetree {
 	/// Returns the length that the blob should be trimmed to.
 	fn safe_checks(blob: &[u64]) -> Result<usize> {
 		if size_of_val(blob) < HEADER_SIZE {
-			return Err(Error::UnexpectedEnd);
+			return Err(BlobError::UnexpectedEnd);
 		}
 
 		let size = unsafe {
@@ -204,7 +155,7 @@ impl Devicetree {
 			Self::totalsize(blob)
 		}? as usize;
 		if size_of_val(blob) < size {
-			return Err(Error::InvalidTotalsize);
+			return Err(BlobError::InvalidTotalsize);
 		}
 
 		// sometimes the dtb's length is not divisible by 8
@@ -217,7 +168,7 @@ impl Devicetree {
 	/// `size_of_val(blob) >= HEADER_SIZE`
 	unsafe fn check_magic(blob: &[u64]) -> Result<()> {
 		if *(blob as *const _ as *const u32) != DTB_MAGIC {
-			return Err(Error::NoMagicSignature);
+			return Err(BlobError::NoMagicSignature);
 		}
 
 		Ok(())
@@ -231,7 +182,7 @@ impl Devicetree {
 		let header = blob as *const _ as *const Header;
 		let size = u32::from_be((*header).totalsize);
 		if size < HEADER_SIZE as u32 {
-			return Err(Error::InvalidTotalsize);
+			return Err(BlobError::InvalidTotalsize);
 		}
 		Ok(size)
 	}
@@ -239,23 +190,23 @@ impl Devicetree {
 	fn late_checks(&self) -> Result<()> {
 		let header = self.header();
 		if header.last_comp_version != LAST_COMPATIBLE_VERSION.to_be() {
-			return Err(Error::IncompatibleVersion);
+			return Err(BlobError::IncompatibleVersion);
 		}
 
 		let offset = u32::from_be(header.off_dt_struct) as usize;
 		let len = u32::from_be(header.size_dt_struct) as usize;
 		let exact_size = u32::from_be(header.totalsize) as usize;
 		if offset % STRUCT_BLOCK_ALIGN != 0 || len % STRUCT_BLOCK_ALIGN != 0 {
-			return Err(Error::UnalignedBlock);
+			return Err(BlobError::UnalignedBlock);
 		}
 		if offset + len > exact_size {
-			return Err(Error::BlockOutOfBounds);
+			return Err(BlobError::BlockOutOfBounds);
 		}
 
 		let offset = u32::from_be(header.off_dt_strings) as usize;
 		let len = u32::from_be(header.size_dt_strings) as usize;
 		if offset + len > exact_size {
-			return Err(Error::BlockOutOfBounds);
+			return Err(BlobError::BlockOutOfBounds);
 		}
 		Ok(())
 	}
@@ -377,14 +328,14 @@ impl Devicetree {
 	pub fn reserve_entries(&self) -> Result<ReserveEntries<'_>> {
 		let offset = u32::from_be(self.header().off_mem_rsvmap) as usize;
 		if offset % MEMORY_RESERVATION_BLOCK_ALIGN != 0 {
-			return Err(Error::UnalignedBlock);
+			return Err(BlobError::UnalignedBlock);
 		}
 
 		Ok(ReserveEntries {
 			blob: self
 				.blob
 				.get(offset / MEMORY_RESERVATION_BLOCK_ALIGN..)
-				.ok_or(Error::BlockOutOfBounds)?,
+				.ok_or(BlobError::BlockOutOfBounds)?,
 		})
 	}
 }
@@ -427,7 +378,7 @@ impl<'dtb> Property<'dtb> {
 	/// Fails if the string is invalid.
 	pub fn name(self) -> Result<&'dtb str> {
 		crate::util::str_from_ascii(crate::util::get_c_str(self.name_blob)?)
-			.ok_or(Error::InvalidString)
+			.ok_or(BlobError::InvalidString)
 	}
 
 	/// The property's value.

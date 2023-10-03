@@ -9,7 +9,7 @@ use fallible_iterator::FallibleIterator;
 
 use crate::{
 	blob::{self, Cursor, Devicetree, Item, Property, Token, TOKEN_SIZE},
-	Error, NodeContext, PushDeserializedNode, Result,
+	BlobError, Error, NodeContext, PushDeserializedNode, Result,
 };
 
 /// A node of the tree structure in a [`Devicetree`] blob's struct block.
@@ -29,7 +29,7 @@ impl<'dtb> Node<'dtb> {
 
 	/// The node's name.
 	pub fn name(&self) -> blob::Result<&'dtb str> {
-		crate::util::str_from_ascii(self.name).ok_or(blob::Error::InvalidString)
+		crate::util::str_from_ascii(self.name).ok_or(BlobError::InvalidString)
 	}
 
 	/// The name as it would show up in a devicetree source file.

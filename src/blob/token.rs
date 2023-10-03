@@ -3,7 +3,7 @@ use core::{cmp::Ordering, mem::size_of};
 use zerocopy::{FromBytes, FromZeroes};
 
 use crate::{
-	blob::{Devicetree, Error, Item, Node, Property, Result},
+	blob::{BlobError, Devicetree, Item, Node, Property, Result},
 	util,
 };
 
@@ -72,10 +72,11 @@ impl Cursor {
 		// basically u32::div_ceil(offset + add, 4) * 4
 		let offset = u32::checked_add(self.offset, add)
 			.and_then(|offset| u32::checked_add(offset, TOKEN_SIZE - 1))
-			.ok_or(Error::UnexpectedEnd)?
+			.ok_or(BlobError::UnexpectedEnd)?
 			& TOKEN_SIZE.wrapping_neg();
 
-		blob.get(offset as usize..).ok_or(Error::UnexpectedEnd)?;
+		blob.get(offset as usize..)
+			.ok_or(BlobError::UnexpectedEnd)?;
 		self.offset = offset;
 		Ok(())
 	}
@@ -100,7 +101,7 @@ impl Devicetree {
 		};
 		match self.next_token(&mut cursor)? {
 			Some(Token::BeginNode(node)) if node.name.is_empty() => Ok(node),
-			_ => Err(Error::InvalidRootNode),
+			_ => Err(BlobError::InvalidRootNode),
 		}
 	}
 
@@ -117,7 +118,7 @@ impl Devicetree {
 
 		let blob = self.blob_u8();
 		loop {
-			let token = self.next_raw(cursor)?.ok_or(Error::UnexpectedEnd)?;
+			let token = self.next_raw(cursor)?.ok_or(BlobError::UnexpectedEnd)?;
 			let offset = cursor.offset as usize;
 
 			let token = match token {
@@ -134,27 +135,27 @@ impl Devicetree {
 					})
 				}
 				RawToken::EndNode => {
-					let depth =
-						u32::checked_sub(cursor.depth, 1).ok_or(Error::UnexpectedEndNodeToken)?;
+					let depth = u32::checked_sub(cursor.depth, 1)
+						.ok_or(BlobError::UnexpectedEndNodeToken)?;
 					cursor.depth = depth;
 
 					Token::EndNode
 				}
 				RawToken::Prop => {
 					let header = PropHeader::read_from_prefix(&blob[offset..])
-						.ok_or(Error::InvalidPropertyHeader)?;
+						.ok_or(BlobError::InvalidPropertyHeader)?;
 
 					let name_blob = self
 						.strings_blob()
 						.get(u32::from_be(header.nameoff) as usize..)
-						.ok_or(Error::InvalidString)?;
+						.ok_or(BlobError::InvalidString)?;
 
 					cursor.offset += PROP_HEADER_SIZE as u32;
 					let offset = cursor.offset as usize;
 
 					let len = u32::from_be(header.len);
 					let value = util::slice_get_with_len(blob, offset, len as usize)
-						.ok_or(Error::InvalidPropertyHeader)?;
+						.ok_or(BlobError::InvalidPropertyHeader)?;
 
 					cursor.increase_offset(len, blob)?;
 
@@ -165,7 +166,7 @@ impl Devicetree {
 					if cursor.depth == 0 {
 						return Ok(None);
 					} else {
-						return Err(Error::UnexpectedEndToken);
+						return Err(BlobError::UnexpectedEndToken);
 					}
 				}
 			};
@@ -194,7 +195,7 @@ impl Devicetree {
 			PROP => RawToken::Prop,
 			NOP => RawToken::Nop,
 			END => RawToken::End,
-			_ => return Err(Error::UnknownToken),
+			_ => return Err(BlobError::UnknownToken),
 		};
 		Ok(Some(token))
 	}

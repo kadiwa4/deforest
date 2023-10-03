@@ -40,7 +40,7 @@ use blob::{Cursor, Item, Node, Property};
 pub enum Error {
 	/// Not produced by this crate.
 	Unknown,
-	Blob(blob::Error),
+	Blob(BlobError),
 	InvalidDeviceType,
 	InvalidNodeName,
 	InvalidPath,
@@ -71,6 +71,55 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+/// Any error related to the blob representation caused by this crate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum BlobError {
+	BlockOutOfBounds,
+	IncompatibleVersion,
+	InvalidPropertyHeader,
+	InvalidRootNode,
+	InvalidString,
+	InvalidTotalsize,
+	NoMagicSignature,
+	UnalignedBlock,
+	UnexpectedEnd,
+	UnexpectedEndToken,
+	UnexpectedEndNodeToken,
+	UnknownToken,
+}
+
+impl Display for BlobError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		use BlobError::*;
+
+		let description = match *self {
+			BlockOutOfBounds => "block out of bounds",
+			IncompatibleVersion => "incompatible devicetree version",
+			InvalidPropertyHeader => "invalid property header",
+			InvalidRootNode => "invalid root node",
+			InvalidString => "invalid string",
+			InvalidTotalsize => "invalid totalsize field",
+			NoMagicSignature => "no magic signature",
+			UnalignedBlock => "unaligned block",
+			UnexpectedEnd => "unexpected end",
+			UnexpectedEndToken => "unexpected END token",
+			UnexpectedEndNodeToken => "unexpected END_NODE token",
+			UnknownToken => "unknown token",
+		};
+		write!(f, "devicetree blob error: {description}")
+	}
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for BlobError {}
+
+impl From<BlobError> for Error {
+	fn from(err: BlobError) -> Self {
+		Self::Blob(err)
+	}
+}
 
 /// Number of 4-byte cells. This crate has an upper limit of 4 cells, but that
 /// is not part of the spec.
@@ -154,7 +203,7 @@ impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		let raw = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
-			.ok_or(blob::Error::UnexpectedEnd)?;
+			.ok_or(BlobError::UnexpectedEnd)?;
 		self.blob = &self.blob[blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO..];
 
 		let entry = (raw.address != 0 || raw.size != 0).then(|| ReserveEntry {
@@ -411,10 +460,10 @@ pub mod util {
 		Some(value)
 	}
 
-	pub(crate) fn get_c_str(blob: &[u8]) -> Result<&[u8], blob::Error> {
+	pub(crate) fn get_c_str(blob: &[u8]) -> Result<&[u8], BlobError> {
 		let mut iter = blob.split(|&b| b == 0);
 		let blob = iter.next().unwrap();
-		iter.next().ok_or(blob::Error::InvalidString)?;
+		iter.next().ok_or(BlobError::InvalidString)?;
 		Ok(blob)
 	}
 

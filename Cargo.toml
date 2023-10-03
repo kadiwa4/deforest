@@ -5,7 +5,7 @@ members = ["devicetree_derive"]
 name = "devicetree"
 version = "0.0.1"
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.70"
 description = "efficient `#![no_std]` parser for devicetree blobs"
 license = "MIT"
 
