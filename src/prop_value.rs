@@ -2,7 +2,7 @@
 
 use crate::{blob::Property, util, Cells, DeserializeProperty, Error, NodeContext, Result};
 use core::{
-	fmt::{Display, Formatter},
+	fmt::{self, Display, Formatter},
 	iter::FusedIterator,
 };
 
@@ -88,7 +88,7 @@ impl<'a> TryFrom<&'a str> for Status<'a> {
 }
 
 impl Display for Status<'_> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match *self {
 			Self::Ok => f.write_str("okay"),
 			Self::Disabled => f.write_str("disabled"),
@@ -160,7 +160,7 @@ impl<'a> DoubleEndedFallibleIterator for Strings<'a> {
 	}
 }
 
-impl<'a> Default for Strings<'a> {
+impl Default for Strings<'_> {
 	fn default() -> Self {
 		Self::EMPTY
 	}
@@ -169,9 +169,9 @@ impl<'a> Default for Strings<'a> {
 /// Iterator over the _(address, length)_ pairs of `reg`'s value.
 #[derive(Clone, Debug, Default)]
 pub struct Reg<'dtb> {
-	value: &'dtb [u32],
-	address_cells: Cells,
-	size_cells: Cells,
+	pub(crate) value: &'dtb [u32],
+	pub(crate) address_cells: Cells,
+	pub(crate) size_cells: Cells,
 }
 
 impl<'dtb> Reg<'dtb> {
@@ -309,10 +309,10 @@ impl<'dtb> DeserializeProperty<'dtb> for Ranges<'dtb> {
 /// ```
 #[derive(Clone, Debug)]
 pub struct RangesIter<'dtb> {
-	value: &'dtb [u32],
-	child_address_cells: Cells,
-	address_cells: Cells,
-	child_size_cells: Cells,
+	pub(crate) value: &'dtb [u32],
+	pub(crate) child_address_cells: Cells,
+	pub(crate) address_cells: Cells,
+	pub(crate) child_size_cells: Cells,
 }
 
 impl<'dtb> RangesIter<'dtb> {
@@ -405,6 +405,38 @@ impl RangesBlock {
 		let parent_bus_address = util::parse_cells(bytes, address_cells)?;
 		let length = util::parse_cells(bytes, child_size_cells)?;
 		Some(Self(child_bus_address, parent_bus_address, length))
+	}
+
+	/// Maps a child address to the parent address.
+	///
+	/// The address at the end of the range is not considered part of the range.
+	///
+	/// # Examples
+	/// ```
+	/// # use devicetree::prop_value::RangesBlock;
+	/// let ranges = RangesBlock(0x1000, 0x4000, 0x0800);
+	/// assert_eq!(ranges.map_to_parent(0x1234), Some(0x4234));
+	/// assert_eq!(ranges.map_to_parent(0x1800), None);
+	/// ```
+	pub fn map_to_parent(self, child_address: u128) -> Option<u128> {
+		let offset = u128::checked_sub(child_address, self.0);
+		offset.filter(|&o| o < self.2).map(|o| self.1 + o)
+	}
+
+	/// Maps a parent address to the child address.
+	///
+	/// The address at the end of the range is not considered part of the range.
+	///
+	/// # Examples
+	/// ```
+	/// # use devicetree::prop_value::RangesBlock;
+	/// let ranges = RangesBlock(0x1000, 0x4000, 0x0800);
+	/// assert_eq!(ranges.map_to_child(0x4321), Some(0x1321));
+	/// assert_eq!(ranges.map_to_child(0x4800), None);
+	/// ```
+	pub fn map_to_child(self, parent_address: u128) -> Option<u128> {
+		let offset = u128::checked_sub(parent_address, self.1);
+		offset.filter(|&o| o < self.2).map(|o| self.0 + o)
 	}
 }
 

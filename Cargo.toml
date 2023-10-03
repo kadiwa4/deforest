@@ -36,4 +36,5 @@ zerocopy = { version =  "0.7.0", features = ["derive"] }
 [features]
 alloc = ["fallible-iterator/alloc"]
 derive = ["devicetree_derive"]
+model = []
 std = ["alloc", "fallible-iterator/std"]

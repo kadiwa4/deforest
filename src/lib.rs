@@ -14,6 +14,8 @@ extern crate alloc as std_alloc;
 #[cfg(feature = "alloc")]
 pub mod alloc;
 pub mod blob;
+#[cfg(feature = "model")]
+pub mod model;
 pub mod prop_value;
 
 #[cfg(feature = "derive")]

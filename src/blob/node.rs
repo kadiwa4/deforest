@@ -16,9 +16,9 @@ use crate::{
 /// It contains [`Property`]s and child nodes.
 #[derive(Clone, Debug)]
 pub struct Node<'dtb> {
-	pub(super) dt: &'dtb Devicetree,
-	pub(super) name: &'dtb [u8],
-	pub(super) contents: Cursor,
+	pub(crate) dt: &'dtb Devicetree,
+	pub(crate) name: &'dtb [u8],
+	pub(crate) contents: Cursor,
 }
 
 impl<'dtb> Node<'dtb> {
