@@ -86,16 +86,11 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			_ => (),
 		}
 		let item_name = item_name.unwrap_or_else(|| {
-			let name = field
+			let ident = field
 				.ident
 				.as_ref()
-				.unwrap_or_else(|| panic!("field {idx} needs an explicit name"))
-				.to_string();
-			if name == "device_type" {
-				return name;
-			}
-			let start_hash = if name.ends_with("_cells") { "#" } else { "" };
-			format!("{start_hash}{}", name.replace('_', "-"))
+				.unwrap_or_else(|| panic!("field {idx} needs an explicit name"));
+			field_to_node_name(ident.to_string())
 		});
 		let ty = field.ty;
 		match kind {
@@ -120,14 +115,14 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				}
 			}),
 			ItemKind::ChildrenRest => {
-				assert!(children_rest_stmts.is_none(), "multilple fields with attribute `#[dt_children(rest)]`");
+				assert!(children_rest_stmts.is_none(), "multiple fields with attribute `#[dt_children(rest)]`");
 				children_rest_stmts = Some(quote! {
 					let val;
 					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
 					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				});
 			}
-		};
+		}
 	}
 
 	let name = strct.ident;
@@ -231,6 +226,14 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		}
 	}
 	.into()
+}
+
+fn field_to_node_name(name: String) -> String {
+	if name == "device_type" {
+		return name;
+	}
+	let start_hash = if name.ends_with("_cells") { "#" } else { "" };
+	format!("{start_hash}{}", name.replace('_', "-"))
 }
 
 fn parse_field_attrs(
