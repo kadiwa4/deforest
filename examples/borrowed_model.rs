@@ -11,15 +11,15 @@ struct RootNode<'dtb> {
 	compatible: prop_value::Strings<'dtb>,
 	serial_number: Option<&'dtb str>,
 	chassis_type: Option<&'dtb str>,
-	#[dt_child]
+	#[dt(child)]
 	aliases: Option<Cursor>,
-	#[dt_children]
+	#[dt(children)]
 	memory: NamedRange<'dtb>,
-	#[dt_child]
+	#[dt(child)]
 	reserved_memory: Option<ReservedMemoryNode<'dtb>>,
-	#[dt_child]
+	#[dt(child)]
 	chosen: Option<ChosenNode<'dtb>>,
-	#[dt_child]
+	#[dt(child)]
 	cpus: Option<CpusNode<'dtb>>,
 }
 
@@ -60,7 +60,7 @@ struct ChosenNode<'dtb> {
 struct CpusNode<'dtb> {
 	address_cells: prop_value::AddressCells,
 	size_cells: prop_value::SizeCells,
-	#[dt_children]
+	#[dt(children)]
 	cpu: NamedRange<'dtb>,
 }
 

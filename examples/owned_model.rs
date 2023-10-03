@@ -12,18 +12,18 @@ struct RootNode {
 	compatible: Vec<String>,
 	serial_number: Option<String>,
 	chassis_type: Option<String>,
-	#[dt_child]
+	#[dt(child)]
 	aliases: Option<Cursor>,
-	#[dt_children]
+	#[dt(children)]
 	memory: Vec<MemoryNode>,
-	#[dt_child]
+	#[dt(child)]
 	reserved_memory: Option<ReservedMemoryNode>,
-	#[dt_child]
+	#[dt(child)]
 	chosen: Option<ChosenNode>,
-	#[dt_child]
+	#[dt(child)]
 	cpus: Option<CpusNode>,
 
-	#[dt_children(rest)]
+	#[dt(children(rest))]
 	rest: Vec<Cursor>,
 }
 
@@ -64,7 +64,7 @@ struct ChosenNode {
 struct CpusNode {
 	address_cells: prop_value::AddressCells,
 	size_cells: prop_value::SizeCells,
-	#[dt_children]
+	#[dt(children)]
 	cpu: Vec<CpuNode>,
 }
 

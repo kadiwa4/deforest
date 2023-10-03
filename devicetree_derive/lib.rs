@@ -4,13 +4,16 @@
 
 use proc_macro2::{Literal, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
-use syn::{Attribute, Expr, GenericParam, ItemStruct, Lit, Meta};
+use syn::{
+	punctuated::Punctuated, Attribute, Expr, ExprLit, GenericParam, ItemStruct, Lit, Meta,
+	MetaList, MetaNameValue, Token,
+};
 
 #[derive(Clone, Copy)]
 enum ItemKind {
-	SelfStartCursor,
-	SelfName,
-	SelfUnitAddress,
+	StartCursor,
+	Name,
+	UnitAddress,
 	Property,
 	Child,
 	Children,
@@ -21,27 +24,33 @@ enum ItemKind {
 ///
 /// Requires an implementation of `Default`.
 ///
-/// Attribute syntax (except for `dt_self`):
-/// For the other attributes:
-/// - `#[dt_*]`
-/// - `#[dt_* = "<item name>"]`
-/// - `#[dt_children(rest)]`
+/// Attribute syntax:
+/// - `#[dt(start_cursor)]`
+/// - `#[dt(name)]`
+/// - `#[dt(unit_address)]`
+/// - `#[dt(property)]`
+/// - `#[dt(property = \"<property name>\")]`
+/// - `#[dt(child)]`
+/// - `#[dt(child = \"<node name>\")]`
+/// - `#[dt(children)]`
+/// - `#[dt(children = \"<node name>\")]`
+/// - `#[dt(children(rest))]
 ///
 /// The default item name is the field name with undescores replaced by hyphens
 /// (and a `#` prepended in case the name ends with `_cells`), except
 /// `device_type`, which uses an underscore.
 /// The unit address is ignored.
 ///
-/// - `#[dt_self(start_cursor)]` stores a cursor to the containing node in that
-///   field (type `Option<Cursor>`).
-/// - `#[dt_self(name)]` stores the containing node's entire name in that field
+/// - `#[dt(start_cursor)]` stores a cursor to the containing node in that field
+///   (type `Option<Cursor>`).
+/// - `#[dt(name)]` stores the containing node's entire name in that field
 ///   (type `T where T: From<&'dtb str>`).
-/// - `#[dt_self(unit_address)]` stores the containing node's unit address in
-///   that field (type `Option<T> where T: From<&'dtb str>`).
+/// - `#[dt(unit_address)]` stores the containing node's unit address in that
+///   field (type `Option<T> where T: From<&'dtb str>`).
 ///
-/// - `#[dt_property]` (default) uses `DeserializeProperty`
-/// - `#[dt_child]` uses `DeserializeNode`
-/// - `#[dt_children]` uses `PushDeserializedNode` to collect items of type
+/// - `#[dt(property)]` (default) uses `DeserializeProperty`
+/// - `#[dt(child)]` uses `DeserializeNode`
+/// - `#[dt(children)]` uses `PushDeserializedNode` to collect items of type
 ///   `Self::Node`; it is similar to `Extend<Self::Node>`
 ///
 /// `DeserializeNode::deserialize` is always used with an appropriate
@@ -49,10 +58,7 @@ enum ItemKind {
 ///
 /// The lifetime `'dtb` (if it exists) is special because it will be used for
 /// the `DeserializeNode<'dtb>` implementation.
-#[proc_macro_derive(
-	DeserializeNode,
-	attributes(dt_self, dt_property, dt_child, dt_children)
-)]
+#[proc_macro_derive(DeserializeNode, attributes(dt))]
 pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let strct: ItemStruct = syn::parse(tokens).expect("invalid struct");
 
@@ -71,15 +77,15 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			Some(ref i) => TokenTree::Ident(i.clone()),
 		};
 		match kind {
-			ItemKind::SelfStartCursor => {
+			ItemKind::StartCursor => {
 				start_cursor_fields.push(field_name);
 				continue;
 			}
-			ItemKind::SelfName => {
+			ItemKind::Name => {
 				name_fields.push(field_name);
 				continue;
 			}
-			ItemKind::SelfUnitAddress => {
+			ItemKind::UnitAddress => {
 				unit_address_fields.push(field_name);
 				continue;
 			}
@@ -94,7 +100,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		});
 		let ty = field.ty;
 		match kind {
-			ItemKind::SelfStartCursor | ItemKind::SelfName | ItemKind::SelfUnitAddress => unreachable!(),
+			ItemKind::StartCursor | ItemKind::Name | ItemKind::UnitAddress => unreachable!(),
 			ItemKind::Property => {
 				prop_match_arms.extend(quote! {
 					#item_name => {
@@ -115,7 +121,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 				}
 			}),
 			ItemKind::ChildrenRest => {
-				assert!(children_rest_stmts.is_none(), "multiple fields with attribute `#[dt_children(rest)]`");
+				assert!(children_rest_stmts.is_none(), "multiple fields with attribute `#[dt(children(rest))]`");
 				children_rest_stmts = Some(quote! {
 					let val;
 					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
@@ -238,107 +244,108 @@ fn field_to_node_name(name: String) -> String {
 
 fn parse_field_attrs(
 	attrs: &[Attribute],
-	mut field_name: impl FnMut() -> String,
+	field_name: impl Fn() -> String,
 ) -> Option<(ItemKind, Option<String>)> {
-	let mut relevant_attrs = attrs.iter().filter_map(|attr| {
-		let mut panic_invalid = |attr_name| -> ! {
-			if attr_name == "dt_self" {
-				panic!(
-					"invalid attribute on field `{}`: `{}`
-Valid forms are:
-- `#[dt_self(start_cursor)]`
-- `#[dt_self(name)]`
-- `#[dt_self(unit_address)]`",
-					field_name(),
-					attr.to_token_stream(),
-				);
-			}
-			let extra_forms = if attr_name == "dt_children" {
-				"\n- `#[dt_children(rest)]`"
-			} else {
-				""
-			};
-			panic!(
-				"invalid attribute on field `{}`: `{}`
-Valid forms are:
-- `#[{attr_name}]`
-- `#[{attr_name} = \"<item name>\"]`{extra_forms}",
-				field_name(),
-				attr.to_token_stream(),
-			)
-		};
-
-		let (path, value_lit) = match &attr.meta {
-			Meta::Path(path) => (path, None),
-			Meta::List(list) => (&list.path, None),
-			Meta::NameValue(name_value) => {
-				let Expr::Lit(ref value_lit) = name_value.value else {
-					panic_invalid(&name_value.path.get_ident()?.to_string())
-				};
-				(&name_value.path, Some(&value_lit.lit))
-			}
-		};
-		let attr_name = path.get_ident()?.to_string();
-
-		let mut rest = false;
-		if let Meta::List(ref list) = attr.meta {
-			match &attr_name[..] {
-				"dt_self" => {
-					let mut kind = None;
-					list.parse_nested_meta(|meta| {
-						if meta.path.is_ident("start_cursor") {
-							kind = Some(ItemKind::SelfStartCursor);
-						} else if meta.path.is_ident("name") {
-							kind = Some(ItemKind::SelfName);
-						} else if meta.path.is_ident("unit_address") {
-							kind = Some(ItemKind::SelfUnitAddress);
-						}
-						Ok(())
-					})
-					.unwrap();
-					return Some((kind.unwrap_or_else(|| panic_invalid(&attr_name)), None));
-				}
-				"dt_property" | "dt_child" => panic_invalid(&attr_name),
-				"dt_children" => list
-					.parse_nested_meta(|meta| {
-						if meta.path.is_ident("rest") {
-							rest = true;
-							return Ok(());
-						}
-						panic_invalid(&attr_name);
-					})
-					.unwrap(),
-				_ => return None,
-			}
-		}
-		let kind = match &attr_name[..] {
-			"dt_property" => ItemKind::Property,
-			"dt_child" => ItemKind::Child,
-			"dt_children" if rest => ItemKind::ChildrenRest,
-			"dt_children" => ItemKind::Children,
-			_ => return None,
-		};
-
-		let item_name = match value_lit {
-			None => None,
-			Some(Lit::Str(name)) => {
-				let name = name.value();
-				assert!(
-					!name.contains('@'),
-					"item name of field `{}` contains unit address",
-					field_name()
-				);
-				Some(name)
-			}
-			Some(_) => panic_invalid(&attr_name),
-		};
-		Some((kind, item_name))
-	});
-	let ret = relevant_attrs.next()?;
+	let mut relevant_attrs = attrs
+		.iter()
+		.filter(|&attr| attr.path().get_ident().is_some_and(|i| *i == "dt"));
+	let attr = relevant_attrs.next()?;
 	assert!(
 		relevant_attrs.next().is_none(),
-		"duplicate attributes on field `{}`",
+		"more than one attribute on field `{}`",
 		field_name()
 	);
-	Some(ret)
+	let panic_invalid = || -> ! {
+		panic!(
+			"invalid attribute on field `{}`: `{}`
+Valid forms are:
+- `#[dt(start_cursor)]`
+- `#[dt(name)]`
+- `#[dt(unit_address)]`
+- `#[dt(property)]`
+- `#[dt(property = \"<property name>\")]`
+- `#[dt(child)]`
+- `#[dt(child = \"<node name>\")]`
+- `#[dt(children)]`
+- `#[dt(children = \"<node name>\")]`
+- `#[dt(children(rest))]`",
+			field_name(),
+			attr.to_token_stream(),
+		)
+	};
+
+	let parse_item_name = |nv: MetaNameValue| -> String {
+		let Expr::Lit(ExprLit {
+			lit: Lit::Str(ref lit),
+			..
+		}) = nv.value
+		else {
+			panic_invalid();
+		};
+		assert!(
+			lit.suffix().is_empty(),
+			"item name literal of field `{}` has suffix",
+			field_name()
+		);
+		let name = lit.value();
+		assert!(
+			!name.contains('@'),
+			"item name of field `{}` contains unit address",
+			field_name()
+		);
+		name
+	};
+
+	let meta = attr.meta.require_list().ok().and_then(meta_list_get_single);
+	let meta = meta.unwrap_or_else(|| panic_invalid());
+	let meta_name = meta.path().get_ident()?.to_string();
+
+	match &meta_name[..] {
+		"start_cursor" | "name" | "unit_address" => {
+			if !matches!(meta, Meta::Path(_)) {
+				panic_invalid();
+			}
+			let kind = match &meta_name[..] {
+				"start_cursor" => ItemKind::StartCursor,
+				"name" => ItemKind::Name,
+				"unit_address" => ItemKind::UnitAddress,
+				_ => unreachable!(),
+			};
+			Some((kind, None))
+		}
+		"property" | "child" => {
+			let item_name = match meta {
+				Meta::Path(_) => None,
+				Meta::List(_) => panic_invalid(),
+				Meta::NameValue(nv) => Some(parse_item_name(nv)),
+			};
+			let kind = match &meta_name[..] {
+				"property" => ItemKind::Property,
+				"child" => ItemKind::Child,
+				_ => unreachable!(),
+			};
+			Some((kind, item_name))
+		}
+		"children" => match meta {
+			Meta::Path(_) => Some((ItemKind::Children, None)),
+			Meta::List(list) => {
+				if !meta_list_get_single(&list)
+					.as_ref()
+					.and_then(|i| i.path().get_ident())
+					.is_some_and(|i| *i == "rest")
+				{
+					panic_invalid();
+				}
+				Some((ItemKind::ChildrenRest, None))
+			}
+			Meta::NameValue(nv) => Some((ItemKind::Children, Some(parse_item_name(nv)))),
+		},
+		_ => panic_invalid(),
+	}
+}
+
+fn meta_list_get_single(list: &MetaList) -> Option<Meta> {
+	let list = list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated);
+	let mut iter = list.expect("invalid attribute").into_iter();
+	iter.next().filter(|_| iter.next().is_none())
 }

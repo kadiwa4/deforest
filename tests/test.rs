@@ -131,11 +131,11 @@ mod derive {
 	fn self_fields() {
 		#[derive(Default, DeserializeNode)]
 		struct DmaNode<'dtb> {
-			#[dt_self(start_cursor)]
+			#[dt(start_cursor)]
 			start_cursor: Option<Cursor>,
-			#[dt_self(name)]
+			#[dt(name)]
 			name: &'dtb str,
-			#[dt_self(unit_address)]
+			#[dt(unit_address)]
 			unit_address: Option<String>,
 		}
 
@@ -153,7 +153,7 @@ mod derive {
 	fn parse_reg_value() {
 		#[derive(Default, DeserializeNode)]
 		struct SocNode<'dtb> {
-			#[dt_child]
+			#[dt(child)]
 			spi: SpiNode<'dtb>,
 		}
 
