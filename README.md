@@ -1,4 +1,4 @@
-# Rust crate `devicetree`
+# Rust crate `deforest`
 
 Efficient `#![no_std]` parser for devicetree blobs compliant (hopefully) with version 0.4 of [the specification][spec].
 
@@ -10,7 +10,7 @@ The crate tries to be efficient by avoiding allocations (it can be used without 
 
 ## Competitor crates
 - [`device_tree`](https://github.com/mbr/device_tree-rs)
-- another crate called [`devicetree`](https://github.com/duanyu-yu/DeviceTree)
+- [`devicetree`](https://github.com/duanyu-yu/DeviceTree)
 - [`devicetree-tool`](https://github.com/michael2012z/devicetree-tool) (not very similar in what it's trying to achieve)
 - [`dtb`](https://github.com/ababo/dtb)
 - [`dtb_parser`](https://github.com/d3ara1n/dtb_parser)

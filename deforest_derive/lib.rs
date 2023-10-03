@@ -104,28 +104,28 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			ItemKind::Property => {
 				prop_match_arms.extend(quote! {
 					#item_name => {
-						this.#field_name = <#ty as ::devicetree::DeserializeProperty<'dtb>>::deserialize(prop, cx)?
+						this.#field_name = <#ty as ::deforest::DeserializeProperty<'dtb>>::deserialize(prop, cx)?
 					}
 				});
 			},
 			ItemKind::Child => child_match_arms.extend(quote! {
 				#item_name => {
-					(this.#field_name, *cursor) = <#ty as ::devicetree::DeserializeNode<'dtb>>::deserialize(&child, child_cx)?
+					(this.#field_name, *cursor) = <#ty as ::deforest::DeserializeNode<'dtb>>::deserialize(&child, child_cx)?
 				}
 			}),
 			ItemKind::Children => child_match_arms.extend(quote! {
 				#item_name => {
 					let val;
-					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
-					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
+					(val, *cursor) = ::deforest::DeserializeNode::deserialize(&child, child_cx)?;
+					<#ty as ::deforest::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				}
 			}),
 			ItemKind::ChildrenRest => {
 				assert!(children_rest_stmts.is_none(), "multiple fields with attribute `#[dt(children(rest))]`");
 				children_rest_stmts = Some(quote! {
 					let val;
-					(val, *cursor) = ::devicetree::DeserializeNode::deserialize(&child, child_cx)?;
-					<#ty as ::devicetree::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
+					(val, *cursor) = ::deforest::DeserializeNode::deserialize(&child, child_cx)?;
+					<#ty as ::deforest::PushDeserializedNode>::push_node(&mut this.#field_name, val, child_cx)?;
 				});
 			}
 		}
@@ -195,8 +195,8 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 			// No children need to be parsed
 			quote! {
 				let mut items = blob_node.items();
-				while let ::core::option::Option::Some(::devicetree::blob::Item::Property(prop)) =
-					::devicetree::fallible_iterator::FallibleIterator::next(&mut items)?
+				while let ::core::option::Option::Some(::deforest::blob::Item::Property(prop)) =
+					::deforest::fallible_iterator::FallibleIterator::next(&mut items)?
 				{
 					match prop.name()? {
 						#prop_match_arms
@@ -219,15 +219,15 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		})
 	};
 	quote! {
-		impl #impl_generics ::devicetree::DeserializeNode<'dtb> for #name #ty_generics #where_clause {
+		impl #impl_generics ::deforest::DeserializeNode<'dtb> for #name #ty_generics #where_clause {
 			fn deserialize(
-				blob_node: &::devicetree::blob::Node<'dtb>,
-				cx: ::devicetree::NodeContext<'_>,
-			) -> ::devicetree::Result<(Self, ::devicetree::blob::Cursor)> {
+				blob_node: &::deforest::blob::Node<'dtb>,
+				cx: ::deforest::NodeContext<'_>,
+			) -> ::deforest::Result<(Self, ::deforest::blob::Cursor)> {
 				let mut this: Self = ::core::default::Default::default();
 				#self_stmts
 				#deserialize_stmts
-				::devicetree::Result::Ok((this, cursor))
+				::deforest::Result::Ok((this, cursor))
 			}
 		}
 	}

@@ -19,7 +19,7 @@ pub mod model;
 pub mod prop_value;
 
 #[cfg(feature = "derive")]
-pub use devicetree_derive::*;
+pub use deforest_derive::*;
 pub use fallible_iterator;
 
 use core::{
@@ -415,7 +415,7 @@ pub mod util {
 	///
 	/// # Examples
 	/// ```
-	/// # use devicetree::{util::split_node_name, Error};
+	/// # use deforest::{util::split_node_name, Error};
 	/// assert_eq!(split_node_name("compatible"), Ok(("compatible", None)));
 	/// assert_eq!(split_node_name("clock@0"), Ok(("clock", Some("0"))));
 	/// assert_eq!(split_node_name("a@b@2"), Err(Error::InvalidNodeName));

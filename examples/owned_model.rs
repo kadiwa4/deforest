@@ -1,4 +1,4 @@
-use devicetree::{
+use deforest::{
 	blob::Cursor,
 	prop_value::{self, RegBlock},
 	DeserializeNode,
@@ -119,7 +119,7 @@ struct CpuNode {
 fn deserialize() {
 	const UNALIGNED_BLOB: &[u8] = include_bytes!("../tests/tree.dtb");
 
-	let dt = devicetree::blob::Devicetree::from_unaligned(UNALIGNED_BLOB).unwrap();
+	let dt = deforest::blob::Devicetree::from_unaligned(UNALIGNED_BLOB).unwrap();
 	let root_node: RootNode = dt.parse_root().unwrap();
 	let cpus = root_node.cpus.unwrap().cpu;
 	assert_eq!(cpus.len(), 4);

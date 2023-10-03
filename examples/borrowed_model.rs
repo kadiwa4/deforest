@@ -1,4 +1,4 @@
-use devicetree::{
+use deforest::{
 	blob::{node::NamedRange, Cursor},
 	prop_value, DeserializeNode,
 };

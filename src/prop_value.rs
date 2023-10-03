@@ -291,7 +291,7 @@ impl<'dtb> DeserializeProperty<'dtb> for Ranges<'dtb> {
 ///
 /// # Examples
 /// ```
-/// # use devicetree::prop_value::{RangesBlock, RangesIter};
+/// # use deforest::prop_value::{RangesBlock, RangesIter};
 ///
 /// let data = [
 ///     0x0200_0000, 0x0000_0000, 0x4000_0000,
@@ -413,7 +413,7 @@ impl RangesBlock {
 	///
 	/// # Examples
 	/// ```
-	/// # use devicetree::prop_value::RangesBlock;
+	/// # use deforest::prop_value::RangesBlock;
 	/// let ranges = RangesBlock(0x1000, 0x4000, 0x0800);
 	/// assert_eq!(ranges.map_to_parent(0x1234), Some(0x4234));
 	/// assert_eq!(ranges.map_to_parent(0x1800), None);
@@ -429,7 +429,7 @@ impl RangesBlock {
 	///
 	/// # Examples
 	/// ```
-	/// # use devicetree::prop_value::RangesBlock;
+	/// # use deforest::prop_value::RangesBlock;
 	/// let ranges = RangesBlock(0x1000, 0x4000, 0x0800);
 	/// assert_eq!(ranges.map_to_child(0x4321), Some(0x1321));
 	/// assert_eq!(ranges.map_to_child(0x4800), None);

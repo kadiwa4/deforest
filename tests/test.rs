@@ -1,6 +1,6 @@
 use std::{ptr::NonNull, sync::OnceLock};
 
-use devicetree::{
+use deforest::{
 	alloc::DevicetreeBuilder,
 	blob::Devicetree,
 	fallible_iterator::FallibleIterator,
@@ -125,7 +125,7 @@ fn from_ptr() {
 #[cfg(feature = "derive")]
 mod derive {
 	use super::*;
-	use devicetree::{blob::Cursor, DeserializeNode};
+	use deforest::{blob::Cursor, DeserializeNode};
 
 	#[test]
 	fn self_fields() {

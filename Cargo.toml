@@ -1,8 +1,8 @@
 [workspace]
-members = ["devicetree_derive"]
+members = ["deforest_derive"]
 
 [package]
-name = "devicetree"
+name = "deforest"
 version = "0.0.1"
 edition = "2021"
 rust-version = "1.70"
@@ -29,12 +29,12 @@ required-features = ["alloc"]
 
 [dependencies]
 ascii = { version = "1.1.0", default-features = false }
-devicetree_derive = { path = "devicetree_derive", optional = true }
+deforest_derive = { path = "deforest_derive", optional = true }
 fallible-iterator = { version = "0.3.0", default-features = false }
 zerocopy = { version =  "0.7.0", features = ["derive"] }
 
 [features]
 alloc = ["fallible-iterator/alloc"]
-derive = ["devicetree_derive"]
+derive = ["deforest_derive"]
 model = []
 std = ["alloc", "fallible-iterator/std"]
