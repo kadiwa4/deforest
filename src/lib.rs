@@ -41,6 +41,7 @@ pub enum Error {
 	/// Not produced by this crate.
 	Unknown,
 	Blob(BlobError),
+	IntOverflow,
 	InvalidDeviceType,
 	InvalidNodeName,
 	InvalidPath,
@@ -56,6 +57,7 @@ impl Display for Error {
 		let description = match self {
 			Unknown => "unknown",
 			Blob(err) => return Display::fmt(err, f),
+			IntOverflow => "int overflow",
 			InvalidDeviceType => "invalid device_type",
 			InvalidNodeName => "invalid node name",
 			InvalidPath => "invalid path",
