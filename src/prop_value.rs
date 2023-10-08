@@ -223,9 +223,9 @@ impl Iterator for Reg<'_> {
 
 impl DoubleEndedIterator for Reg<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		let length = util::parse_cells_back(&mut self.value, self.size_cells)?;
+		let size = util::parse_cells_back(&mut self.value, self.size_cells)?;
 		let address = util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
-		Some(RegBlock(address, length))
+		Some(RegBlock(address, size))
 	}
 }
 
@@ -245,8 +245,56 @@ impl RegBlock {
 	/// to be parsed.
 	pub fn parse(bytes: &mut &[u32], address_cells: Cells, size_cells: Cells) -> Option<Self> {
 		let address = util::parse_cells(bytes, address_cells)?;
-		let length = util::parse_cells(bytes, size_cells)?;
-		Some(Self(address, length))
+		let size = util::parse_cells(bytes, size_cells)?;
+		Some(Self(address, size))
+	}
+
+	/// The end address of the region (unless there's an overflow).
+	pub fn end_address(self) -> Option<u128> {
+		let Self(address, size) = self;
+		u128::checked_add(address, size)
+	}
+
+	/// Maps an _(address, length)_ pair from child to parent address space.
+	///
+	/// This entire region has to be contained in the `ranges` block for
+	/// something to be returned.
+	///
+	/// # Examples
+	/// ```
+	/// # use deforest::prop_value::{RangesBlock, RegBlock};
+	/// let range = RangesBlock(0x1000, 0x4000, 0x0800);
+	/// let reg = RegBlock(0x1200, 0x0600);
+	/// assert_eq!(reg.map_to_parent(range), Some(RegBlock(0x4200, 0x0600)));
+	/// let reg = RegBlock(0x1200, 0x0800);
+	/// assert_eq!(reg.map_to_parent(range), None);
+	/// ```
+	#[must_use]
+	pub fn map_to_parent(self, range: RangesBlock) -> Option<Self> {
+		let Self(child_address, size) = self;
+		let parent_address = range.map_to_parent(child_address)?;
+		(self.end_address()? <= range.child_end_address()?).then_some(Self(parent_address, size))
+	}
+
+	/// Maps an _(address, length)_ pair from parent to child address space.
+	///
+	/// This entire region has to be contained in the `ranges` block for
+	/// something to be returned.
+	///
+	/// # Examples
+	/// ```
+	/// # use deforest::prop_value::{RangesBlock, RegBlock};
+	/// let range = RangesBlock(0x1000, 0x4000, 0x0800);
+	/// let reg = RegBlock(0x4200, 0x0600);
+	/// assert_eq!(reg.map_to_child(range), Some(RegBlock(0x1200, 0x0600)));
+	/// let reg = RegBlock(0x4200, 0x0800);
+	/// assert_eq!(reg.map_to_child(range), None);
+	/// ```
+	#[must_use]
+	pub fn map_to_child(self, range: RangesBlock) -> Option<Self> {
+		let Self(parent_address, size) = self;
+		let child_address = range.map_to_child(parent_address)?;
+		(self.end_address()? <= range.parent_end_address()?).then_some(Self(child_address, size))
 	}
 }
 
@@ -371,12 +419,12 @@ impl Iterator for RangesIter<'_> {
 
 impl DoubleEndedIterator for RangesIter<'_> {
 	fn next_back(&mut self) -> Option<Self::Item> {
-		let length = util::parse_cells_back(&mut self.value, self.child_size_cells)?;
+		let size = util::parse_cells_back(&mut self.value, self.child_size_cells)?;
 		let parent_bus_address =
 			util::parse_cells_back(&mut self.value, self.address_cells).unwrap();
 		let child_bus_address =
 			util::parse_cells_back(&mut self.value, self.child_address_cells).unwrap();
-		Some(RangesBlock(child_bus_address, parent_bus_address, length))
+		Some(RangesBlock(child_bus_address, parent_bus_address, size))
 	}
 }
 
@@ -403,8 +451,20 @@ impl RangesBlock {
 	) -> Option<Self> {
 		let child_bus_address = util::parse_cells(bytes, child_address_cells)?;
 		let parent_bus_address = util::parse_cells(bytes, address_cells)?;
-		let length = util::parse_cells(bytes, child_size_cells)?;
-		Some(Self(child_bus_address, parent_bus_address, length))
+		let size = util::parse_cells(bytes, child_size_cells)?;
+		Some(Self(child_bus_address, parent_bus_address, size))
+	}
+
+	/// The child end address of the range (unless there's an overflow).
+	pub fn child_end_address(self) -> Option<u128> {
+		let Self(child_bus_address, _, size) = self;
+		u128::checked_add(child_bus_address, size)
+	}
+
+	/// The parent end address of the range (unless there's an overflow).
+	pub fn parent_end_address(self) -> Option<u128> {
+		let Self(_, parent_bus_address, size) = self;
+		u128::checked_add(parent_bus_address, size)
 	}
 
 	/// Maps a child address to the parent address.
@@ -414,13 +474,14 @@ impl RangesBlock {
 	/// # Examples
 	/// ```
 	/// # use deforest::prop_value::RangesBlock;
-	/// let ranges = RangesBlock(0x1000, 0x4000, 0x0800);
-	/// assert_eq!(ranges.map_to_parent(0x1234), Some(0x4234));
-	/// assert_eq!(ranges.map_to_parent(0x1800), None);
+	/// let range = RangesBlock(0x1000, 0x4000, 0x0800);
+	/// assert_eq!(range.map_to_parent(0x1234), Some(0x4234));
+	/// assert_eq!(range.map_to_parent(0x1800), None);
 	/// ```
 	pub fn map_to_parent(self, child_address: u128) -> Option<u128> {
-		let offset = u128::checked_sub(child_address, self.0);
-		offset.filter(|&o| o < self.2).map(|o| self.1 + o)
+		let Self(child_bus_address, parent_bus_address, size) = self;
+		let offset = u128::checked_sub(child_address, child_bus_address);
+		u128::checked_add(parent_bus_address, offset.filter(|&o| o < size)?)
 	}
 
 	/// Maps a parent address to the child address.
@@ -430,13 +491,14 @@ impl RangesBlock {
 	/// # Examples
 	/// ```
 	/// # use deforest::prop_value::RangesBlock;
-	/// let ranges = RangesBlock(0x1000, 0x4000, 0x0800);
-	/// assert_eq!(ranges.map_to_child(0x4321), Some(0x1321));
-	/// assert_eq!(ranges.map_to_child(0x4800), None);
+	/// let range = RangesBlock(0x1000, 0x4000, 0x0800);
+	/// assert_eq!(range.map_to_child(0x4321), Some(0x1321));
+	/// assert_eq!(range.map_to_child(0x4800), None);
 	/// ```
 	pub fn map_to_child(self, parent_address: u128) -> Option<u128> {
-		let offset = u128::checked_sub(parent_address, self.1);
-		offset.filter(|&o| o < self.2).map(|o| self.0 + o)
+		let Self(child_bus_address, parent_bus_address, size) = self;
+		let offset = u128::checked_sub(parent_address, parent_bus_address);
+		u128::checked_add(child_bus_address, offset.filter(|&o| o < size)?)
 	}
 }
 
