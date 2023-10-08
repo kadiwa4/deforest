@@ -69,11 +69,9 @@ impl PartialEq for Cursor {
 
 impl Cursor {
 	fn increase_offset(&mut self, add: u32, blob: &[u8]) -> Result<()> {
-		// basically u32::div_ceil(offset + add, 4) * 4
 		let offset = u32::checked_add(self.offset, add)
-			.and_then(|offset| u32::checked_add(offset, TOKEN_SIZE - 1))
-			.ok_or(BlobError::UnexpectedEnd)?
-			& TOKEN_SIZE.wrapping_neg();
+			.and_then(|o| o.checked_next_multiple_of(TOKEN_SIZE))
+			.ok_or(BlobError::UnexpectedEnd)?;
 
 		blob.get(offset as usize..)
 			.ok_or(BlobError::UnexpectedEnd)?;

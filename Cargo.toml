@@ -5,7 +5,7 @@ members = ["deforest_derive"]
 name = "deforest"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.73"
 description = "efficient `#![no_std]` parser for devicetree blobs"
 repository = "https://github.com/kadiwa4/deforest"
 license = "MIT"
@@ -42,3 +42,6 @@ alloc = ["fallible-iterator/alloc"]
 derive = ["deforest_derive"]
 model = []
 std = ["alloc", "fallible-iterator/std"]
+
+[package.metadata.docs.rs]
+all-features = true
