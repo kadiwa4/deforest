@@ -3,7 +3,7 @@ members = ["deforest_derive"]
 
 [package]
 name = "deforest"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.73"
 description = "efficient `#![no_std]` parser for devicetree blobs"
