@@ -12,8 +12,8 @@ use fallible_iterator::FallibleIterator;
 use crate::{
 	blob::{self, Cursor, Devicetree, Item, Node, Property},
 	prop_value::{self, RegBlock},
-	DeserializeNode, DeserializeProperty, Error, NodeContext, Path, PushDeserializedNode,
-	ReserveEntry, Result,
+	DeserializeNode, DeserializeProperty, Error, MemReserveEntry, NodeContext, Path,
+	PushDeserializedNode, Result,
 };
 
 /// Starting point for constructing a [`Devicetree`] yourself.
@@ -23,7 +23,7 @@ pub struct DevicetreeBuilder<'a> {
 	/// Defaults to 0.
 	pub boot_core_id: u32,
 	/// Defaults to an empty slice.
-	pub reserve_entries: &'a [ReserveEntry],
+	pub mem_reserve_entries: &'a [MemReserveEntry],
 	/// Blob of the struct block.
 	pub struct_blob: &'a [u32],
 	/// Blob of the strings block.
@@ -35,7 +35,7 @@ impl<'a> DevicetreeBuilder<'a> {
 	pub const fn new(struct_blob: &'a [u32], strings_blob: &'a [u8]) -> Self {
 		Self {
 			boot_core_id: 0,
-			reserve_entries: &[],
+			mem_reserve_entries: &[],
 			struct_blob,
 			strings_blob,
 		}
@@ -43,10 +43,9 @@ impl<'a> DevicetreeBuilder<'a> {
 
 	/// Constructs the devicetree. Returns `None` if it is too large.
 	pub fn build(&self) -> Result<Box<Devicetree>> {
-		const HEADER_SIZE_ALIGN_RATIO: usize = blob::HEADER_SIZE / blob::DTB_ALIGN;
-
-		let struct_offset =
-			blob::HEADER_SIZE + size_of_val(self.reserve_entries) + size_of::<ReserveEntry>();
+		let struct_offset = blob::Header::SIZE
+			+ size_of_val(self.mem_reserve_entries)
+			+ size_of::<MemReserveEntry>();
 		let strings_offset = struct_offset + size_of_val(self.struct_blob);
 		let size = strings_offset + self.strings_blob.len();
 
@@ -54,20 +53,20 @@ impl<'a> DevicetreeBuilder<'a> {
 		let size = u32::try_from(size).ok().ok_or(Error::DevicetreeTooLarge)?;
 
 		let mut blob: Vec<u64> = Vec::with_capacity(capacity);
-		blob.extend::<[u64; HEADER_SIZE_ALIGN_RATIO]>(zerocopy::transmute!(blob::Header {
+		blob.extend::<[u64; blob::Header::SIZE_ALIGN_RATIO]>(zerocopy::transmute!(blob::Header {
 			magic: blob::DTB_MAGIC,
 			totalsize: size.to_be(),
 			off_dt_struct: (struct_offset as u32).to_be(),
 			off_dt_strings: (strings_offset as u32).to_be(),
-			off_mem_rsvmap: (blob::HEADER_SIZE as u32).to_be(),
+			off_mem_rsvmap: (blob::Header::SIZE as u32).to_be(),
 			version: 17_u32.to_be(),
 			last_comp_version: blob::LAST_COMPATIBLE_VERSION.to_be(),
 			boot_cpuid_phys: self.boot_core_id.to_be(),
 			size_dt_strings: (self.strings_blob.len() as u32).to_be(),
 			size_dt_struct: (size_of_val(self.struct_blob) as u32).to_be(),
 		}));
-		blob.extend(self.reserve_entries.iter().flat_map(
-			|e| -> [u64; blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO] {
+		blob.extend(self.mem_reserve_entries.iter().flat_map(
+			|e| -> [u64; blob::RawReserveEntry::SIZE_ALIGN_RATIO] {
 				zerocopy::transmute!(blob::RawReserveEntry {
 					address: e.address.to_be(),
 					size: e.size.to_be(),
@@ -77,7 +76,7 @@ impl<'a> DevicetreeBuilder<'a> {
 		unsafe {
 			blob.as_mut_ptr().add(capacity - 1).write(0);
 		}
-		blob.extend([0; blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO]);
+		blob.extend([0; blob::RawReserveEntry::SIZE_ALIGN_RATIO]);
 
 		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity.
 		// the constructed Devicetree would pass all of the checks, so we can skip them

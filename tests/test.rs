@@ -101,8 +101,8 @@ fn build() {
 	let original = dt();
 	let mut builder = DevicetreeBuilder::new(original.struct_blob(), original.strings_blob());
 	builder.boot_core_id = original.boot_core_id();
-	let reserve_entries: Vec<_> = original.reserve_entries().unwrap().collect().unwrap();
-	builder.reserve_entries = &reserve_entries;
+	let mem_reserve_entries: Vec<_> = original.mem_reserve_entries().unwrap().collect().unwrap();
+	builder.mem_reserve_entries = &mem_reserve_entries;
 	let clone = builder.build().unwrap();
 	assert_eq!(original.blob(), clone.blob());
 }

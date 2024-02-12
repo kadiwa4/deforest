@@ -182,32 +182,32 @@ impl Path for str {
 }
 
 /// An entry from a blob's memory reservation block, obtained from
-/// [`ReserveEntries`].
+/// [`MemReserveEntries`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ReserveEntry {
+pub struct MemReserveEntry {
 	pub address: u64,
 	pub size: u64,
 }
 
-/// An iterator over the [`ReserveEntry`] from a [`Devicetree`] blob's memory
+/// An iterator over the [`MemReserveEntry`] from a [`Devicetree`] blob's memory
 /// reservation block.
 ///
 /// [`Devicetree`]: blob::Devicetree
 #[derive(Clone)]
-pub struct ReserveEntries<'dtb> {
+pub struct MemReserveEntries<'dtb> {
 	blob: &'dtb [u64],
 }
 
-impl<'dtb> FallibleIterator for ReserveEntries<'dtb> {
-	type Item = ReserveEntry;
+impl<'dtb> FallibleIterator for MemReserveEntries<'dtb> {
+	type Item = MemReserveEntry;
 	type Error = Error;
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		let raw = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
 			.ok_or(BlobError::UnexpectedEnd)?;
-		self.blob = &self.blob[blob::RESERVE_ENTRY_SIZE_ALIGN_RATIO..];
+		self.blob = &self.blob[blob::RawReserveEntry::SIZE_ALIGN_RATIO..];
 
-		let entry = (raw.address != 0 || raw.size != 0).then(|| ReserveEntry {
+		let entry = (raw.address != 0 || raw.size != 0).then(|| MemReserveEntry {
 			address: u64::from_be(raw.address),
 			size: u64::from_be(raw.size),
 		});

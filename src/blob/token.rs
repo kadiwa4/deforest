@@ -105,8 +105,6 @@ impl Devicetree {
 
 	/// Returns the token pointed to by the cursor and advance the cursor.
 	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
-		const PROP_HEADER_SIZE: usize = size_of::<PropHeader>();
-
 		#[derive(FromBytes, FromZeroes)]
 		#[repr(C)]
 		struct PropHeader {
@@ -148,7 +146,7 @@ impl Devicetree {
 						.get(u32::from_be(header.nameoff) as usize..)
 						.ok_or(BlobError::InvalidString)?;
 
-					cursor.offset += PROP_HEADER_SIZE as u32;
+					cursor.offset += size_of::<PropHeader>() as u32;
 					let offset = cursor.offset as usize;
 
 					let len = u32::from_be(header.len);
