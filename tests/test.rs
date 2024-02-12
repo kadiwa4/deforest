@@ -99,12 +99,10 @@ fn multiple_children() {
 #[test]
 fn build() {
 	let original = dt();
-	let mut builder = DevicetreeBuilder::default();
+	let mut builder = DevicetreeBuilder::new(original.struct_blob(), original.strings_blob());
 	builder.boot_core_id = original.boot_core_id();
 	let reserve_entries: Vec<_> = original.reserve_entries().unwrap().collect().unwrap();
 	builder.reserve_entries = &reserve_entries;
-	builder.struct_blob = Some(original.struct_blob());
-	builder.strings_blob = Some(original.strings_blob());
 	let clone = builder.build().unwrap();
 	assert_eq!(original.blob(), clone.blob());
 }

@@ -1,7 +1,3 @@
-#![warn(rust_2018_idioms)]
-#![warn(macro_use_extern_crate, meta_variable_misuse, missing_abi)]
-#![warn(unused_lifetimes, unused_macro_rules, unused_qualifications)]
-
 use proc_macro2::{Literal, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
@@ -34,7 +30,7 @@ enum ItemKind {
 /// - `#[dt(child = \"<node name>\")]`
 /// - `#[dt(children)]`
 /// - `#[dt(children = \"<node name>\")]`
-/// - `#[dt(children(rest))]
+/// - `#[dt(children(rest))]`
 ///
 /// The default item name is the field name with undescores replaced by hyphens
 /// (and a `#` prepended in case the name ends with `_cells`), except

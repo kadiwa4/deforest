@@ -4,9 +4,6 @@
 //! [spec]: https://www.devicetree.org/specifications
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![warn(rust_2018_idioms)]
-#![warn(macro_use_extern_crate, meta_variable_misuse, missing_abi)]
-#![warn(unused_lifetimes, unused_macro_rules, unused_qualifications)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc as std_alloc;
@@ -41,6 +38,7 @@ pub enum Error {
 	/// Not produced by this crate.
 	Unknown,
 	Blob(BlobError),
+	DevicetreeTooLarge,
 	IntOverflow,
 	InvalidDeviceType,
 	InvalidNodeName,
@@ -57,7 +55,8 @@ impl Display for Error {
 		let description = match self {
 			Unknown => "unknown",
 			Blob(err) => return Display::fmt(err, f),
-			IntOverflow => "int overflow",
+			DevicetreeTooLarge => "devicetree too large",
+			IntOverflow => "integer overflow",
 			InvalidDeviceType => "invalid device_type",
 			InvalidNodeName => "invalid node name",
 			InvalidPath => "invalid path",
