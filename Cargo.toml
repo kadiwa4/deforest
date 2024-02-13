@@ -11,7 +11,7 @@ unused_qualifications = "warn"
 
 [package]
 name = "deforest"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.74"
 description = "efficient `#![no_std]` parser for devicetree blobs"
@@ -44,7 +44,7 @@ required-features = ["alloc"]
 
 [dependencies]
 ascii = { version = "1.1.0", default-features = false }
-deforest_derive = { path = "deforest_derive", version = "=0.1.0", optional = true }
+deforest_derive = { path = "deforest_derive", version = "=0.3.0", optional = true }
 fallible-iterator = { version = "0.3.0", default-features = false }
 zerocopy = { version = "0.7.31", default-features = false, features = ["derive"] }
 
