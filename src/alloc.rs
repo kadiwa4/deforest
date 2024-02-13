@@ -49,24 +49,26 @@ impl<'a> DevicetreeBuilder<'a> {
 		let strings_offset = struct_offset + size_of_val(self.struct_blob);
 		let size = strings_offset + self.strings_blob.len();
 
-		let capacity = (size + blob::DTB_ALIGN - 1) / blob::DTB_ALIGN;
+		let capacity = (size + blob::DTB_OPTIMAL_ALIGN - 1) / blob::DTB_OPTIMAL_ALIGN;
 		let size = u32::try_from(size).ok().ok_or(Error::DevicetreeTooLarge)?;
 
 		let mut blob: Vec<u64> = Vec::with_capacity(capacity);
-		blob.extend::<[u64; blob::Header::SIZE_ALIGN_RATIO]>(zerocopy::transmute!(blob::Header {
-			magic: blob::DTB_MAGIC,
-			totalsize: size.to_be(),
-			off_dt_struct: (struct_offset as u32).to_be(),
-			off_dt_strings: (strings_offset as u32).to_be(),
-			off_mem_rsvmap: (blob::Header::SIZE as u32).to_be(),
-			version: 17_u32.to_be(),
-			last_comp_version: blob::LAST_COMPATIBLE_VERSION.to_be(),
-			boot_cpuid_phys: self.boot_core_id.to_be(),
-			size_dt_strings: (self.strings_blob.len() as u32).to_be(),
-			size_dt_struct: (size_of_val(self.struct_blob) as u32).to_be(),
-		}));
+		blob.extend::<[u64; blob::Header::SIZE / blob::DTB_OPTIMAL_ALIGN]>(zerocopy::transmute!(
+			blob::Header {
+				magic: blob::DTB_MAGIC,
+				totalsize: size.to_be(),
+				off_dt_struct: (struct_offset as u32).to_be(),
+				off_dt_strings: (strings_offset as u32).to_be(),
+				off_mem_rsvmap: (blob::Header::SIZE as u32).to_be(),
+				version: 17_u32.to_be(),
+				last_comp_version: blob::LAST_COMPATIBLE_VERSION.to_be(),
+				boot_cpuid_phys: self.boot_core_id.to_be(),
+				size_dt_strings: (self.strings_blob.len() as u32).to_be(),
+				size_dt_struct: (size_of_val(self.struct_blob) as u32).to_be(),
+			}
+		));
 		blob.extend(self.mem_reserve_entries.iter().flat_map(
-			|e| -> [u64; blob::RawReserveEntry::SIZE_ALIGN_RATIO] {
+			|e| -> [u64; blob::RawReserveEntry::FIELD_COUNT] {
 				zerocopy::transmute!(blob::RawReserveEntry {
 					address: e.address.to_be(),
 					size: e.size.to_be(),
@@ -76,7 +78,7 @@ impl<'a> DevicetreeBuilder<'a> {
 		unsafe {
 			blob.as_mut_ptr().add(capacity - 1).write(0);
 		}
-		blob.extend([0; blob::RawReserveEntry::SIZE_ALIGN_RATIO]);
+		blob.extend([0; blob::RawReserveEntry::FIELD_COUNT]);
 
 		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity.
 		// the constructed Devicetree would pass all of the checks, so we can skip them

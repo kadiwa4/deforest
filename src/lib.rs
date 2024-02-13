@@ -205,7 +205,7 @@ impl<'dtb> FallibleIterator for MemReserveEntries<'dtb> {
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		let raw = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
 			.ok_or(BlobError::UnexpectedEnd)?;
-		self.blob = &self.blob[blob::RawReserveEntry::SIZE_ALIGN_RATIO..];
+		self.blob = &self.blob[blob::RawReserveEntry::FIELD_COUNT..];
 
 		let entry = (raw.address != 0 || raw.size != 0).then(|| MemReserveEntry {
 			address: u64::from_be(raw.address),

@@ -27,15 +27,15 @@ use crate::{
 
 type Result<T, E = BlobError> = core::result::Result<T, E>;
 
-pub(crate) const DTB_ALIGN: usize = 8;
+pub(crate) const DTB_OPTIMAL_ALIGN: usize = 8;
 /// 4-byte magic signature of Devicetree blobs.
 pub const DTB_MAGIC: [u8; 4] = 0xd00d_feed_u32.to_be_bytes();
 pub(crate) const LAST_COMPATIBLE_VERSION: u32 = 16;
-const MEM_RESERVE_BLOCK_ALIGN: usize = 8;
-const STRUCT_BLOCK_ALIGN: usize = 4;
+const MEM_RESERVE_BLOCK_OPTIMAL_ALIGN: usize = 8;
+const STRUCT_BLOCK_OPTIMAL_ALIGN: usize = 4;
 
 #[derive(AsBytes)]
-#[repr(C, align(8))]
+#[repr(C)]
 pub(crate) struct Header {
 	pub magic: [u8; 4],
 	pub totalsize: u32,
@@ -51,12 +51,11 @@ pub(crate) struct Header {
 
 impl Header {
 	pub const SIZE: usize = size_of::<Self>();
-	pub const SIZE_ALIGN_RATIO: usize = size_of::<Self>() / DTB_ALIGN;
 }
 
 /// Devicetree blob.
 ///
-/// Alignment: 8 bytes
+/// Alignment: Same as `u64`.
 #[repr(transparent)]
 pub struct Devicetree {
 	blob: [u64],
@@ -78,7 +77,7 @@ impl Devicetree {
 	pub unsafe fn from_ptr(ptr: NonNull<u64>) -> Result<&'static Self> {
 		let ptr: *const u64 = ptr.as_ptr();
 		let size = unsafe {
-			let blob = slice::from_raw_parts(ptr, Header::SIZE_ALIGN_RATIO);
+			let blob = slice::from_raw_parts(ptr, Header::SIZE / DTB_OPTIMAL_ALIGN);
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
 		}? as usize;
@@ -89,7 +88,7 @@ impl Devicetree {
 		}
 
 		// sometimes the dtb's length is not divisible by 8
-		let slice_len = (size + DTB_ALIGN - 1) / DTB_ALIGN;
+		let slice_len = (size + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN;
 		unsafe { Self::from_slice_internal(slice::from_raw_parts(ptr, slice_len)) }
 	}
 
@@ -128,7 +127,7 @@ impl Devicetree {
 	#[cfg(feature = "alloc")]
 	pub fn from_unaligned(blob: &[u8]) -> Result<Box<Self>> {
 		// sometimes the dtb's length is not divisible by 8
-		let capacity = (blob.len() + DTB_ALIGN - 1) / DTB_ALIGN;
+		let capacity = (blob.len() + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN;
 		let mut aligned_blob: Vec<u64> = Vec::with_capacity(capacity);
 
 		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity
@@ -168,7 +167,7 @@ impl Devicetree {
 		}
 
 		// sometimes the dtb's length is not divisible by 8
-		Ok((size + DTB_ALIGN - 1) / DTB_ALIGN)
+		Ok((size + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN)
 	}
 
 	/// Verifies the magic header of a devicetree blob.
@@ -206,7 +205,7 @@ impl Devicetree {
 		let offset = u32::from_be(header.off_dt_struct) as usize;
 		let len = u32::from_be(header.size_dt_struct) as usize;
 		let exact_size = u32::from_be(header.totalsize) as usize;
-		if offset % STRUCT_BLOCK_ALIGN != 0 || len % STRUCT_BLOCK_ALIGN != 0 {
+		if offset % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 || len % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 {
 			return Err(BlobError::UnalignedBlock);
 		}
 		if offset + len > exact_size {
@@ -228,8 +227,8 @@ impl Devicetree {
 
 	/// The exact byte size of the devicetree. This might be a bit smaller than
 	/// `size_of_val(dt)` (or `dt.blob_u8().len()`) because Rust's memory model
-	/// requires 8-byte-aligned types to also have a size that's a multiple of
-	/// 8, whereas the devicetree spec doesn't.
+	/// requires 8-byte-aligned types (such as `u64` on most platforms) to also
+	/// have a size that's a multiple of 8, whereas the devicetree spec doesn't.
 	pub fn exact_size(&self) -> u32 {
 		u32::from_be(self.header().totalsize)
 	}
@@ -268,7 +267,7 @@ impl Devicetree {
 		&self.blob
 	}
 
-	/// The blob data of the struct block. Always 4-byte aligned.
+	/// The blob data of the struct block.
 	pub fn struct_blob(&self) -> &[u32] {
 		let header = self.header();
 		let offset = u32::from_be(header.off_dt_struct) as usize;
@@ -278,8 +277,8 @@ impl Devicetree {
 		unsafe {
 			crate::util::slice_get_with_len_unchecked(
 				self.blob_u32(),
-				offset / STRUCT_BLOCK_ALIGN,
-				len / STRUCT_BLOCK_ALIGN,
+				offset / STRUCT_BLOCK_OPTIMAL_ALIGN,
+				len / STRUCT_BLOCK_OPTIMAL_ALIGN,
 			)
 		}
 	}
@@ -337,14 +336,14 @@ impl Devicetree {
 	/// Iterates over the memory reservation block.
 	pub fn mem_reserve_entries(&self) -> Result<MemReserveEntries<'_>> {
 		let offset = u32::from_be(self.header().off_mem_rsvmap) as usize;
-		if offset % MEM_RESERVE_BLOCK_ALIGN != 0 {
+		if offset % MEM_RESERVE_BLOCK_OPTIMAL_ALIGN != 0 {
 			return Err(BlobError::UnalignedBlock);
 		}
 
 		Ok(MemReserveEntries {
 			blob: self
 				.blob
-				.get(offset / MEM_RESERVE_BLOCK_ALIGN..)
+				.get(offset / MEM_RESERVE_BLOCK_OPTIMAL_ALIGN..)
 				.ok_or(BlobError::BlockOutOfBounds)?,
 		})
 	}
@@ -503,12 +502,12 @@ impl<'dtb> Item<'dtb> {
 }
 
 #[derive(AsBytes, FromBytes, FromZeroes)]
-#[repr(C, align(8))]
+#[repr(C)]
 pub(crate) struct RawReserveEntry {
 	pub address: u64,
 	pub size: u64,
 }
 
 impl RawReserveEntry {
-	pub const SIZE_ALIGN_RATIO: usize = size_of::<Self>() / MEM_RESERVE_BLOCK_ALIGN;
+	pub const FIELD_COUNT: usize = size_of::<Self>() / MEM_RESERVE_BLOCK_OPTIMAL_ALIGN;
 }
