@@ -93,21 +93,19 @@ pub enum BlobError {
 
 impl Display for BlobError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		use BlobError::*;
-
 		let description = match *self {
-			BlockOutOfBounds => "block out of bounds",
-			IncompatibleVersion => "incompatible devicetree version",
-			InvalidPropertyHeader => "invalid property header",
-			InvalidRootNode => "invalid root node",
-			InvalidString => "invalid string",
-			InvalidTotalsize => "invalid totalsize field",
-			NoMagicSignature => "no magic signature",
-			UnalignedBlock => "unaligned block",
-			UnexpectedEnd => "unexpected end",
-			UnexpectedEndToken => "unexpected END token",
-			UnexpectedEndNodeToken => "unexpected END_NODE token",
-			UnknownToken => "unknown token",
+			Self::BlockOutOfBounds => "block out of bounds",
+			Self::IncompatibleVersion => "incompatible devicetree version",
+			Self::InvalidPropertyHeader => "invalid property header",
+			Self::InvalidRootNode => "invalid root node",
+			Self::InvalidString => "invalid string",
+			Self::InvalidTotalsize => "invalid totalsize field",
+			Self::NoMagicSignature => "no magic signature",
+			Self::UnalignedBlock => "unaligned block",
+			Self::UnexpectedEnd => "unexpected end",
+			Self::UnexpectedEndToken => "unexpected END token",
+			Self::UnexpectedEndNodeToken => "unexpected END_NODE token",
+			Self::UnknownToken => "unknown token",
 		};
 		write!(f, "devicetree blob error: {description}")
 	}
@@ -117,6 +115,7 @@ impl Display for BlobError {
 impl std::error::Error for BlobError {}
 
 impl From<BlobError> for Error {
+	#[inline]
 	fn from(err: BlobError) -> Self {
 		Self::Blob(err)
 	}
@@ -227,6 +226,7 @@ pub struct NodeContext<'a> {
 }
 
 impl Default for NodeContext<'_> {
+	#[inline]
 	fn default() -> Self {
 		Self {
 			custom: None,
@@ -290,6 +290,7 @@ pub trait DeserializeProperty<'dtb>: Sized {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for Property<'dtb> {
+	#[inline]
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		Ok(blob_prop)
 	}
@@ -314,6 +315,7 @@ impl<'dtb> DeserializeProperty<'dtb> for bool {
 }
 
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
+	#[inline]
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		Ok(blob_prop.value())
 	}
@@ -474,12 +476,14 @@ pub mod util {
 
 	/// Same as `<[_]>::get` with a range except that it takes a length, not an end
 	/// offset.
+	#[inline]
 	pub(crate) fn slice_get_with_len<T>(slice: &[T], offset: usize, len: usize) -> Option<&[T]> {
 		slice.get(offset..offset + len)
 	}
 
 	/// Same as `<[_]>::get_unchecked` with a range except that it takes a length,
 	/// not an end offset.
+	#[inline]
 	pub(crate) unsafe fn slice_get_with_len_unchecked<T>(
 		slice: &[T],
 		offset: usize,

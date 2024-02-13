@@ -46,12 +46,14 @@ pub struct Cursor {
 }
 
 impl PartialOrd for Cursor {
+	#[inline]
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(Ord::cmp(self, other))
 	}
 }
 
 impl Ord for Cursor {
+	#[inline]
 	fn cmp(&self, other: &Self) -> Ordering {
 		let res = Ord::cmp(&self.offset, &other.offset);
 		if res == Ordering::Equal {
@@ -62,6 +64,7 @@ impl Ord for Cursor {
 }
 
 impl PartialEq for Cursor {
+	#[inline]
 	fn eq(&self, other: &Self) -> bool {
 		Ord::cmp(self, other) == Ordering::Equal
 	}

@@ -1,4 +1,5 @@
-//! Higher level of abstraction.
+//! Higher level of abstraction. This is very incomplete; consider creating your
+//! own types instead.
 
 use crate::{
 	blob::{self, Cursor, Devicetree},

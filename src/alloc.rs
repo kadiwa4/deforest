@@ -1,4 +1,4 @@
-//! Features needing memory allocation.
+//! Features depending on memory allocation.
 
 use core::{
 	iter::Map,
@@ -41,7 +41,10 @@ impl<'a> DevicetreeBuilder<'a> {
 		}
 	}
 
-	/// Constructs the devicetree. Returns `None` if it is too large.
+	/// Constructs the devicetree.
+	///
+	/// # Errors
+	/// Throws [`Error::DevicetreeTooLarge`] if it is too large.
 	pub fn build(&self) -> Result<Box<Devicetree>> {
 		let struct_offset = blob::Header::SIZE
 			+ size_of_val(self.mem_reserve_entries)

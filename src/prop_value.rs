@@ -34,6 +34,7 @@ impl<'dtb> DeserializeProperty<'dtb> for AddressCells {
 pub struct SizeCells(pub Cells);
 
 impl Default for SizeCells {
+	#[inline]
 	fn default() -> Self {
 		Self(1)
 	}
@@ -114,6 +115,7 @@ impl<'a> Strings<'a> {
 	/// Creates a new iterator over the strings contained in the value.
 	///
 	/// Returns `None` if the value does not end in a null byte.
+	#[inline]
 	pub fn new(value: &'a [u8]) -> Option<Self> {
 		matches!(value, [.., 0]).then_some(Self { value })
 	}
@@ -139,6 +141,7 @@ impl<'a> FallibleIterator for Strings<'a> {
 		Ok(Some(s))
 	}
 
+	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		if self.value.is_empty() {
 			(0, Some(0))
@@ -161,6 +164,7 @@ impl<'a> DoubleEndedFallibleIterator for Strings<'a> {
 }
 
 impl Default for Strings<'_> {
+	#[inline]
 	fn default() -> Self {
 		Self::EMPTY
 	}
@@ -209,6 +213,7 @@ impl Iterator for Reg<'_> {
 		RegBlock::parse(&mut self.value, self.address_cells, self.size_cells)
 	}
 
+	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.value.len() / (self.address_cells + self.size_cells) as usize;
 		(len, Some(len))
@@ -250,6 +255,7 @@ impl RegBlock {
 	}
 
 	/// The end address of the region (unless there's an overflow).
+	#[inline]
 	pub fn end_address(self) -> Result<u128> {
 		let Self(address, size) = self;
 		u128::checked_add(address, size).ok_or(Error::IntOverflow)
@@ -409,6 +415,7 @@ impl Iterator for RangesIter<'_> {
 		)
 	}
 
+	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.value.len() as u32 / self.ranges_block_cells() as u32;
 		(len as usize, Some(len as usize))
@@ -460,12 +467,14 @@ impl RangesBlock {
 	}
 
 	/// The child end address of the range (unless there's an overflow).
+	#[inline]
 	pub fn child_end_address(self) -> Result<u128> {
 		let Self(child_bus_address, _, size) = self;
 		u128::checked_add(child_bus_address, size).ok_or(Error::IntOverflow)
 	}
 
 	/// The parent end address of the range (unless there's an overflow).
+	#[inline]
 	pub fn parent_end_address(self) -> Result<u128> {
 		let Self(_, parent_bus_address, size) = self;
 		u128::checked_add(parent_bus_address, size).ok_or(Error::IntOverflow)
@@ -552,7 +561,7 @@ impl<'dtb> DeserializeProperty<'dtb> for SmallU64 {
 	}
 }
 
-/// Zero-sized type that fails if the property value isn't `"memory"`.
+/// Zero-sized type that throws if the property value isn't `"memory"`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceTypeMemory;
 
@@ -566,7 +575,7 @@ impl<'dtb> DeserializeProperty<'dtb> for DeviceTypeMemory {
 	}
 }
 
-/// Zero-sized type that fails if the property value isn't `"cpu"`.
+/// Zero-sized type that throws if the property value isn't `"cpu"`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceTypeCpu;
 

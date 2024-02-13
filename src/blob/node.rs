@@ -23,6 +23,7 @@ pub struct Node<'dtb> {
 
 impl<'dtb> Node<'dtb> {
 	/// The devicetree containing this node.
+	#[inline]
 	pub fn devicetree(&self) -> &'dtb Devicetree {
 		self.dt
 	}
@@ -64,6 +65,7 @@ impl<'dtb> Node<'dtb> {
 	}
 
 	/// Cursor pointing to the first [`Token`] inside this node.
+	#[inline]
 	pub fn content_cursor(&self) -> Cursor {
 		self.contents
 	}
@@ -224,6 +226,7 @@ impl<'dtb> Items<'dtb> {
 	/// Creates a new iterator over the [`Item`]s contained in a node.
 	///
 	/// The cursor has to be inside the node.
+	#[inline]
 	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
 		debug_assert!(node.contents <= cursor && node.contents.depth <= cursor.depth);
 		Self {
@@ -234,6 +237,7 @@ impl<'dtb> Items<'dtb> {
 	}
 
 	/// The cursor has to be inside the node.
+	#[inline]
 	pub fn set_cursor(&mut self, cursor: Cursor) {
 		debug_assert!(self.at_depth <= cursor.depth);
 		self.cursor = cursor;
@@ -279,11 +283,13 @@ impl<'dtb> Properties<'dtb> {
 	/// Creates an iterator over the [`Property`]s contained in a node.
 	///
 	/// The cursor has to be inside the node.
+	#[inline]
 	pub fn new(dt: &'dtb Devicetree, cursor: Cursor) -> Self {
 		Self { dt, cursor }
 	}
 
 	/// Cursor pointing to the next [`Token`].
+	#[inline]
 	pub fn cursor(&self) -> Cursor {
 		self.cursor
 	}
@@ -324,11 +330,13 @@ impl<'dtb> Children<'dtb> {
 	/// Creates an iterator over the child [`Node`]s contained in a node.
 	///
 	/// The cursor has to be inside the node.
+	#[inline]
 	pub fn new(node: &Node<'dtb>, cursor: Cursor) -> Self {
 		Self(Items::new(node, cursor))
 	}
 
 	/// The cursor has to be inside the node.
+	#[inline]
 	pub fn set_cursor(&mut self, cursor: Cursor) {
 		self.0.set_cursor(cursor);
 	}
@@ -449,14 +457,17 @@ impl<'dtb> NamedRange<'dtb> {
 	}
 
 	/// Cursor pointing to the first node's [`Token`].
+	#[inline]
 	pub fn first(self) -> Option<Cursor> {
 		self.0.map(|(_, b)| b.first())
 	}
 
+	#[inline]
 	pub fn len(self) -> usize {
 		self.0.map_or(0, |(_, b)| b.len as usize)
 	}
 
+	#[inline]
 	pub fn is_empty(self) -> bool {
 		self.0.is_none()
 	}
@@ -484,6 +495,7 @@ impl Hash for BaseRange {
 	}
 }
 impl BaseRange {
+	#[inline]
 	fn first(self) -> Cursor {
 		Cursor {
 			depth: self.depth,
@@ -509,6 +521,16 @@ impl BaseRange {
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct NamedRangeIter<'dtb>(Option<NamedRangeIterInner<'dtb>>);
 
+impl<'dtb> NamedRangeIter<'dtb> {
+	/// Default empty iterator.
+	pub const EMPTY: Self = Self(None);
+
+	#[inline]
+	pub fn remaining_len(&self) -> u32 {
+		self.0.as_ref().map_or(0, |i| i.len)
+	}
+}
+
 impl<'dtb> FallibleIterator for NamedRangeIter<'dtb> {
 	type Item = Node<'dtb>;
 	type Error = Error;
@@ -527,18 +549,10 @@ impl<'dtb> FallibleIterator for NamedRangeIter<'dtb> {
 		res
 	}
 
+	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let len = self.remaining_len() as usize;
 		(len, Some(len))
-	}
-}
-
-impl<'dtb> NamedRangeIter<'dtb> {
-	/// Default empty iterator.
-	pub const EMPTY: Self = Self(None);
-
-	pub fn remaining_len(&self) -> u32 {
-		self.0.as_ref().map_or(0, |i| i.len)
 	}
 }
 

@@ -1,3 +1,5 @@
+//! Derive macro for `deforest`, a `#![no_std]` devicetree parser.
+
 use proc_macro2::{Literal, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{

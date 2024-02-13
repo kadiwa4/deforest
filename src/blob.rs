@@ -28,7 +28,7 @@ use crate::{
 type Result<T, E = BlobError> = core::result::Result<T, E>;
 
 pub(crate) const DTB_OPTIMAL_ALIGN: usize = 8;
-/// 4-byte magic signature of Devicetree blobs.
+/// 4-byte magic signature of devicetree blobs.
 pub const DTB_MAGIC: [u8; 4] = 0xd00d_feed_u32.to_be_bytes();
 pub(crate) const LAST_COMPATIBLE_VERSION: u32 = 16;
 const MEM_RESERVE_BLOCK_OPTIMAL_ALIGN: usize = 8;
@@ -119,6 +119,7 @@ impl Devicetree {
 	}
 
 	#[cfg(feature = "alloc")]
+	#[inline]
 	pub(crate) unsafe fn from_box_unchecked(blob: Box<[u64]>) -> Box<Self> {
 		Box::from_raw(Box::into_raw(blob) as *mut Self)
 	}
@@ -220,6 +221,7 @@ impl Devicetree {
 		Ok(())
 	}
 
+	#[inline]
 	fn header(&self) -> &Header {
 		// Safety: length check was done in Self::totalsize
 		unsafe { &*(self as *const _ as *const Header) }
@@ -243,6 +245,7 @@ impl Devicetree {
 	/// The last version compatible with this devicetree blob's version.
 	///
 	/// Currently required to be 16.
+	#[inline]
 	pub fn last_comp_version(&self) -> u32 {
 		LAST_COMPATIBLE_VERSION
 	}
@@ -253,16 +256,19 @@ impl Devicetree {
 	}
 
 	/// The blob data as a `u8` slice.
+	#[inline]
 	pub fn blob_u8(&self) -> &[u8] {
 		self.blob.as_bytes()
 	}
 
 	/// The blob data as a `u32` slice.
+	#[inline]
 	pub fn blob_u32(&self) -> &[u32] {
 		Ref::new_slice(self.blob_u8()).unwrap().into_slice()
 	}
 
 	/// The blob data as a `u64` slice.
+	#[inline]
 	pub fn blob(&self) -> &[u64] {
 		&self.blob
 	}
@@ -361,6 +367,7 @@ impl Debug for Devicetree {
 }
 
 impl<'a> From<&'a Devicetree> for &'a [u64] {
+	#[inline]
 	fn from(dt: &'a Devicetree) -> Self {
 		&dt.blob
 	}
@@ -391,6 +398,7 @@ impl<'dtb> Property<'dtb> {
 	}
 
 	/// The property's value.
+	#[inline]
 	pub fn value(self) -> &'dtb [u8] {
 		debug_assert_eq!(self.value.as_ptr() as usize % 4, 0);
 		self.value
