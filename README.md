@@ -10,3 +10,7 @@ On the downside, the interface isn't the most ergonomic.
 ## Alternatives
 - [`fdt-rs`](https://github.com/rs-embedded/fdt-rs): can even build an index to interact with DTBs faster
 - [`fdt`](https://github.com/repnop/fdt): comes with extra types for a couple of common nodes
+
+## License
+This project is licensed under the MIT license ([LICENSE-MIT](LICENSE-MIT) or
+https://opensource.org/license/mit/).
