@@ -1,12 +1,13 @@
 //! Types representing property values.
 
-use crate::{blob::Property, util, Cells, DeserializeProperty, Error, NodeContext, Result};
 use core::{
 	fmt::{self, Display, Formatter},
 	iter::FusedIterator,
 };
 
 use fallible_iterator::{DoubleEndedFallibleIterator, FallibleIterator};
+
+use crate::{blob::Property, util, Cells, DeserializeProperty, Error, NodeContext, Result};
 
 /// Value of `#address-cells`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -385,8 +386,7 @@ impl<'dtb> RangesIter<'dtb> {
 		if child_address_cells > 4 || address_cells > 4 || child_size_cells > 4 {
 			return Err(Error::TooManyCells);
 		}
-		if value.len() as u32 % (child_address_cells + address_cells + child_size_cells) as u32 != 0
-		{
+		if value.len() % (child_address_cells + address_cells + child_size_cells) as usize != 0 {
 			return Err(Error::UnsuitableProperty);
 		}
 
@@ -417,13 +417,13 @@ impl Iterator for RangesIter<'_> {
 
 	#[inline]
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.value.len() as u32 / self.ranges_block_cells() as u32;
-		(len as usize, Some(len as usize))
+		let len = self.value.len() / self.ranges_block_cells() as usize;
+		(len, Some(len))
 	}
 
 	fn nth(&mut self, n: usize) -> Option<RangesBlock> {
-		let idx = u32::checked_mul(n as u32, self.ranges_block_cells() as u32)?;
-		self.value = self.value.get(idx as usize..)?;
+		let idx = usize::checked_mul(n, self.ranges_block_cells() as usize)?;
+		self.value = self.value.get(idx..)?;
 		self.next()
 	}
 }
@@ -551,9 +551,9 @@ pub struct SmallU64(pub u64);
 impl<'dtb> DeserializeProperty<'dtb> for SmallU64 {
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
 		let value = blob_prop.value();
-		if let Ok(arr) = value.try_into() {
+		if let Ok(arr) = <[u8; 4]>::try_from(value) {
 			Ok(Self(u32::from_be_bytes(arr) as u64))
-		} else if let Ok(arr) = value.try_into() {
+		} else if let Ok(arr) = <[u8; 8]>::try_from(value) {
 			Ok(Self(u64::from_be_bytes(arr)))
 		} else {
 			Err(Error::UnsuitableProperty)

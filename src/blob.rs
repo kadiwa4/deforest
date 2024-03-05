@@ -25,6 +25,11 @@ use crate::{
 	BlobError, DeserializeNode, DeserializeProperty, MemReserveEntries, NodeContext, Path,
 };
 
+// on 16-bit platforms, the maximum valid devicetree size is i16::MAX
+#[cfg(target_pointer_width = "16")]
+type DtUint = u16;
+#[cfg(not(target_pointer_width = "16"))]
+type DtUint = u32;
 type Result<T, E = BlobError> = core::result::Result<T, E>;
 
 pub(crate) const DTB_OPTIMAL_ALIGN: usize = 8;
@@ -80,10 +85,10 @@ impl Devicetree {
 			let blob = slice::from_raw_parts(ptr, Header::SIZE / DTB_OPTIMAL_ALIGN);
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
-		}? as usize;
+		}?;
 
-		if usize::overflowing_add(ptr as usize, size).1 {
-			// the buffer wraps around
+		if size > isize::MAX as usize || usize::overflowing_add(ptr as usize, size).1 {
+			// the buffer occupies more than half of the address space or wraps around
 			return Err(BlobError::InvalidTotalsize);
 		}
 
@@ -166,7 +171,7 @@ impl Devicetree {
 		let size = unsafe {
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
-		}? as usize;
+		}?;
 		if size_of_val(blob) < size {
 			return Err(BlobError::InvalidTotalsize);
 		}
@@ -192,13 +197,13 @@ impl Devicetree {
 	/// # Safety
 	/// `size_of_val(blob) >= Header::SIZE`
 	#[deny(unsafe_op_in_unsafe_fn)]
-	unsafe fn totalsize(blob: &[u64]) -> Result<u32> {
+	unsafe fn totalsize(blob: &[u64]) -> Result<usize> {
 		let header = blob as *const _ as *const Header;
 		let size = u32::from_be(unsafe { (*header).totalsize });
-		if size < Header::SIZE as u32 {
-			return Err(BlobError::InvalidTotalsize);
-		}
-		Ok(size)
+		usize::try_from(size)
+			.ok()
+			.filter(|&s| s >= Header::SIZE)
+			.ok_or(BlobError::InvalidTotalsize)
 	}
 
 	fn late_checks(&self) -> Result<()> {
@@ -207,21 +212,28 @@ impl Devicetree {
 			return Err(BlobError::IncompatibleVersion);
 		}
 
-		let offset = u32::from_be(header.off_dt_struct) as usize;
-		let len = u32::from_be(header.size_dt_struct) as usize;
 		let exact_size = u32::from_be(header.totalsize) as usize;
-		if offset % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 || len % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 {
+		let (offset, size) = Option::zip(
+			usize::try_from(u32::from_be(header.off_dt_struct)).ok(),
+			usize::try_from(u32::from_be(header.size_dt_struct)).ok(),
+		)
+		.filter(|&(o, s)| usize::checked_add(o, s).is_some_and(|e| e <= exact_size))
+		.ok_or(BlobError::BlockOutOfBounds)?;
+
+		if offset % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 || size % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 {
 			return Err(BlobError::UnalignedBlock);
 		}
-		if offset + len > exact_size {
+
+		if !Option::zip(
+			usize::try_from(u32::from_be(header.off_dt_strings)).ok(),
+			usize::try_from(u32::from_be(header.size_dt_strings)).ok(),
+		)
+		.and_then(|(o, s)| usize::checked_add(o, s))
+		.is_some_and(|e| e <= exact_size)
+		{
 			return Err(BlobError::BlockOutOfBounds);
 		}
 
-		let offset = u32::from_be(header.off_dt_strings) as usize;
-		let len = u32::from_be(header.size_dt_strings) as usize;
-		if offset + len > exact_size {
-			return Err(BlobError::BlockOutOfBounds);
-		}
 		Ok(())
 	}
 
@@ -345,7 +357,8 @@ impl Devicetree {
 
 	/// Iterates over the memory reservation block.
 	pub fn mem_reserve_entries(&self) -> Result<MemReserveEntries<'_>> {
-		let offset = u32::from_be(self.header().off_mem_rsvmap) as usize;
+		let offset = usize::try_from(u32::from_be(self.header().off_mem_rsvmap))
+			.map_err(|_| BlobError::BlockOutOfBounds)?;
 		if offset % MEM_RESERVE_BLOCK_OPTIMAL_ALIGN != 0 {
 			return Err(BlobError::UnalignedBlock);
 		}

@@ -1,16 +1,11 @@
 //! Nodes from the blob’s struct block.
 
-use core::{
-	fmt::{self, Display, Formatter, Write},
-	hash::{Hash, Hasher},
-};
+use core::fmt::{self, Display, Formatter, Write};
 
 use fallible_iterator::FallibleIterator;
 
-use crate::{
-	blob::{self, Cursor, Devicetree, Item, Property, Token, TOKEN_SIZE},
-	BlobError, Error, NodeContext, PushDeserializedNode, Result,
-};
+use super::{Cursor, Devicetree, DtUint, Item, Property, Token, TOKEN_SIZE};
+use crate::{blob, BlobError, Error, NodeContext, PushDeserializedNode, Result};
 
 /// A node of the tree structure in a [`Devicetree`] blob's struct block.
 /// It contains [`Property`]s and child nodes.
@@ -58,7 +53,7 @@ impl<'dtb> Node<'dtb> {
 	pub fn start_cursor(&self) -> Cursor {
 		Cursor {
 			depth: self.contents.depth - 1,
-			offset: ((self.contents.offset - self.name.len() as u32 - 1)
+			offset: ((self.contents.offset - self.name.len() as DtUint - 1)
 				& TOKEN_SIZE.wrapping_neg())
 				- TOKEN_SIZE,
 		}
@@ -156,7 +151,7 @@ impl<'dtb> Node<'dtb> {
 
 impl<'dtb> Display for Node<'dtb> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		fn write_indent(f: &mut Formatter<'_>, depth: u32) -> fmt::Result {
+		fn write_indent(f: &mut Formatter<'_>, depth: DtUint) -> fmt::Result {
 			for _ in 0..depth {
 				f.write_char('\t')?;
 			}
@@ -218,7 +213,7 @@ impl<'dtb> Display for Node<'dtb> {
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct Items<'dtb> {
 	dt: &'dtb Devicetree,
-	at_depth: u32,
+	at_depth: DtUint,
 	pub(crate) cursor: Cursor,
 }
 
@@ -412,9 +407,8 @@ pub struct NamedRange<'dtb>(Option<(&'dtb str, BaseRange)>);
 impl PartialEq for NamedRange<'_> {
 	fn eq(&self, other: &Self) -> bool {
 		if let (Self(Some((name0, base0))), Self(Some((name1, base1)))) = (*self, *other) {
-			let ret = base0.first_offset == base1.first_offset && base0.len == base1.len;
+			let ret = base0.first == base1.first && base0.len == base1.len;
 			if ret {
-				debug_assert_eq!(base0.depth, base1.depth);
 				debug_assert_eq!(name0, name1);
 			}
 			ret
@@ -433,7 +427,7 @@ impl<'dtb> PushDeserializedNode<'dtb> for NamedRange<'dtb> {
 			return Ok(());
 		};
 		let cursor = node.start_cursor();
-		debug_assert_eq!(cursor.depth, base.depth);
+		debug_assert_eq!(cursor.depth, base.first.depth);
 		base.len += 1;
 		Ok(())
 	}
@@ -449,8 +443,7 @@ impl<'dtb> NamedRange<'dtb> {
 		Ok(Self(Some((
 			node.split_name()?.0,
 			BaseRange {
-				depth: cursor.depth,
-				first_offset: cursor.offset,
+				first: cursor,
 				len: 1,
 			},
 		))))
@@ -481,36 +474,23 @@ impl<'dtb> NamedRange<'dtb> {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct BaseRange {
-	depth: u32,
-	first_offset: u32,
-	len: u32,
+	first: Cursor,
+	len: DtUint,
 }
 
-impl Hash for BaseRange {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.first_offset.hash(state);
-		self.len.hash(state);
-	}
-}
 impl BaseRange {
 	#[inline]
 	fn first(self) -> Cursor {
-		Cursor {
-			depth: self.depth,
-			offset: self.first_offset,
-		}
+		self.first
 	}
 
 	fn to_children(self, dt: &Devicetree) -> Children<'_> {
 		Children(Items {
 			dt,
-			at_depth: self.depth,
-			cursor: Cursor {
-				depth: self.depth,
-				offset: self.first_offset,
-			},
+			at_depth: self.first.depth,
+			cursor: self.first,
 		})
 	}
 }
@@ -527,7 +507,7 @@ impl<'dtb> NamedRangeIter<'dtb> {
 
 	#[inline]
 	pub fn remaining_len(&self) -> u32 {
-		self.0.as_ref().map_or(0, |i| i.len)
+		self.0.as_ref().map_or(0, |i| DtUint::into(i.len))
 	}
 }
 
@@ -560,5 +540,5 @@ impl<'dtb> FallibleIterator for NamedRangeIter<'dtb> {
 struct NamedRangeIterInner<'dtb> {
 	children: Children<'dtb>,
 	filter_name: &'dtb str,
-	len: u32,
+	len: DtUint,
 }

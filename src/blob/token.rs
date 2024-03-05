@@ -1,13 +1,15 @@
-use core::{cmp::Ordering, mem::size_of};
+use core::{
+	cmp::Ordering,
+	hash::{Hash, Hasher},
+	mem::size_of,
+};
 
 use zerocopy::{FromBytes, FromZeroes};
 
-use crate::{
-	blob::{BlobError, Devicetree, Item, Node, Property, Result},
-	util,
-};
+use super::{BlobError, Devicetree, DtUint, Item, Node, Property, Result};
+use crate::util;
 
-pub(super) const TOKEN_SIZE: u32 = 4;
+pub(super) const TOKEN_SIZE: DtUint = 4;
 
 /// A parsed token from the [`Devicetree`] blob's struct block.
 ///
@@ -41,8 +43,8 @@ impl<'dtb> Token<'dtb> {
 /// Do not compare cursors from different devicetrees.
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct Cursor {
-	pub(super) depth: u32,
-	pub(super) offset: u32,
+	pub(super) depth: DtUint,
+	pub(super) offset: DtUint,
 }
 
 impl PartialOrd for Cursor {
@@ -70,9 +72,18 @@ impl PartialEq for Cursor {
 	}
 }
 
+impl Hash for Cursor {
+	#[inline]
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.offset.hash(state);
+	}
+}
+
 impl Cursor {
-	fn increase_offset(&mut self, add: u32, blob: &[u8]) -> Result<()> {
-		let offset = u32::checked_add(self.offset, add)
+	/// Increases the offset of the cursor to the value of `add` but rounded up
+	/// to the next multiple of `TOKEN_SIZE`.
+	fn increase_offset(&mut self, add: DtUint, blob: &[u8]) -> Result<()> {
+		let offset = DtUint::checked_add(self.offset, add)
 			.and_then(|o| o.checked_next_multiple_of(TOKEN_SIZE))
 			.ok_or(BlobError::UnexpectedEnd)?;
 
@@ -98,7 +109,7 @@ impl Devicetree {
 		// bounds check was done in Self::late_checks
 		let mut cursor = Cursor {
 			depth: 0,
-			offset: u32::from_be(self.header().off_dt_struct),
+			offset: u32::from_be(self.header().off_dt_struct) as DtUint,
 		};
 		match self.next_token(&mut cursor)? {
 			Some(Token::BeginNode(node)) if node.name.is_empty() => Ok(node),
@@ -125,7 +136,7 @@ impl Devicetree {
 					let name = &blob[offset..];
 					let name = util::get_c_str(name)?;
 
-					cursor.increase_offset(name.len() as u32 + 1, blob)?;
+					cursor.increase_offset(name.len() as DtUint + 1, blob)?;
 					cursor.depth += 1;
 					Token::BeginNode(Node {
 						dt: self,
@@ -134,7 +145,7 @@ impl Devicetree {
 					})
 				}
 				RawToken::EndNode => {
-					let depth = u32::checked_sub(cursor.depth, 1)
+					let depth = DtUint::checked_sub(cursor.depth, 1)
 						.ok_or(BlobError::UnexpectedEndNodeToken)?;
 					cursor.depth = depth;
 
@@ -144,15 +155,16 @@ impl Devicetree {
 					let header = PropHeader::read_from_prefix(&blob[offset..])
 						.ok_or(BlobError::InvalidPropertyHeader)?;
 
-					let name_blob = self
-						.strings_blob()
-						.get(u32::from_be(header.nameoff) as usize..)
+					let name_blob = usize::try_from(u32::from_be(header.nameoff))
+						.ok()
+						.and_then(|offset| self.strings_blob().get(offset..))
 						.ok_or(BlobError::InvalidString)?;
 
-					cursor.offset += size_of::<PropHeader>() as u32;
+					cursor.offset += size_of::<PropHeader>() as DtUint;
 					let offset = cursor.offset as usize;
 
-					let len = u32::from_be(header.len);
+					let len = DtUint::try_from(u32::from_be(header.len))
+						.map_err(|_| BlobError::InvalidPropertyHeader)?;
 					let value = util::slice_get_with_len(blob, offset, len as usize)
 						.ok_or(BlobError::InvalidPropertyHeader)?;
 

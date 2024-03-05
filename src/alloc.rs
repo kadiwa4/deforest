@@ -44,7 +44,8 @@ impl<'a> DevicetreeBuilder<'a> {
 	/// Constructs the devicetree.
 	///
 	/// # Errors
-	/// Throws [`Error::DevicetreeTooLarge`] if it is too large.
+	/// Throws [`Error::DevicetreeTooLarge`] or runs out of memory if it is too
+	/// large.
 	pub fn build(&self) -> Result<Box<Devicetree>> {
 		let struct_offset = blob::Header::SIZE
 			+ size_of_val(self.mem_reserve_entries)
