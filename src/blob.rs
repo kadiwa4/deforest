@@ -130,10 +130,14 @@ impl Devicetree {
 		// sometimes the dtb's length is not divisible by 8
 		let capacity = (blob.len() + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN;
 		let mut aligned_blob: Vec<u64> = Vec::with_capacity(capacity);
+		aligned_blob
+			.spare_capacity_mut()
+			.last_mut()
+			.ok_or(BlobError::UnexpectedEnd)?
+			.write(0);
 
 		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity
 		unsafe {
-			aligned_blob.as_mut_ptr().add(capacity - 1).write(0);
 			core::ptr::copy_nonoverlapping(
 				blob.as_ptr(),
 				aligned_blob.as_mut_ptr() as *mut u8,

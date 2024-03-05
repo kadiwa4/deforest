@@ -5,7 +5,7 @@ use deforest::{
 	blob::Devicetree,
 	fallible_iterator::FallibleIterator,
 	prop_value::{self, RegBlock},
-	DeserializeProperty, NodeContext,
+	BlobError, DeserializeProperty, NodeContext,
 };
 
 const UNALIGNED_BLOB: &[u8] = include_bytes!("tree.dtb");
@@ -118,6 +118,15 @@ fn from_ptr() {
 	}
 	.unwrap();
 	assert_eq!(original.blob().len(), from_ptr.blob().len());
+}
+
+#[test]
+fn from_unaligned() {
+	// dt already contains a normal usage of Devicetree::from_unaligned
+	assert_eq!(
+		Devicetree::from_unaligned(&[]).err(),
+		Some(BlobError::UnexpectedEnd)
+	);
 }
 
 #[cfg(feature = "derive")]

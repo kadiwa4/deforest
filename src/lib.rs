@@ -437,36 +437,36 @@ pub mod util {
 
 	/// Parses the 4-byte cells of a property value.
 	///
-	/// Returns something only if `bytes` is long enough and the cell count is
+	/// Returns something only if `value` is long enough and the cell count is
 	/// no bigger than 16 bytes. The 16-byte limit is not part of the spec.
 	/// Defaults to 0 if zero cells are to be parsed.
-	pub fn parse_cells(bytes: &mut &[u32], cells: Cells) -> Option<u128> {
+	pub fn parse_cells(value: &mut &[u32], cells: Cells) -> Option<u128> {
 		if cells > 4 {
 			return None;
 		}
-		let mut value: u128 = 0;
-		for &byte in bytes.get(..cells as usize)? {
-			value = (value << 0x20) | u32::from_be(byte) as u128;
+		let mut ret: u128 = 0;
+		for &word in value.get(..cells as usize)? {
+			ret = (ret << 0x20) | u32::from_be(word) as u128;
 		}
-		*bytes = &bytes[cells as usize..];
-		Some(value)
+		*value = &value[cells as usize..];
+		Some(ret)
 	}
 
-	pub(crate) fn parse_cells_back(bytes: &mut &[u32], cells: Cells) -> Option<u128> {
+	pub(crate) fn parse_cells_back(value: &mut &[u32], cells: Cells) -> Option<u128> {
 		if cells > 4 {
 			return None;
 		}
-		let idx = usize::checked_sub(bytes.len(), cells as usize)?;
-		let mut value: u128 = 0;
-		for &byte in &bytes[idx..] {
-			value = (value << 0x20) | u32::from_be(byte) as u128;
+		let idx = usize::checked_sub(value.len(), cells as usize)?;
+		let mut ret: u128 = 0;
+		for &word in &value[idx..] {
+			ret = (ret << 0x20) | u32::from_be(word) as u128;
 		}
-		*bytes = &bytes[..idx];
-		Some(value)
+		*value = &value[..idx];
+		Some(ret)
 	}
 
 	pub(crate) fn get_c_str(blob: &[u8]) -> Result<&[u8], BlobError> {
-		let mut iter = blob.split(|&b| b == 0);
+		let mut iter = blob.splitn(2, |&b| b == 0);
 		let blob = iter.next().unwrap();
 		iter.next().ok_or(BlobError::InvalidString)?;
 		Ok(blob)
