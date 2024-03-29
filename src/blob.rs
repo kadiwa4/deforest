@@ -7,9 +7,6 @@
 pub mod node;
 mod token;
 
-pub use node::Node;
-pub use token::*;
-
 use core::{
 	fmt::{self, Debug, Display, Formatter, Write},
 	mem::{size_of, size_of_val},
@@ -17,13 +14,15 @@ use core::{
 	slice,
 };
 #[cfg(feature = "alloc")]
-use std_alloc::{boxed::Box, vec::Vec};
+use std_alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 
 use zerocopy::{AsBytes, FromBytes, FromZeroes, Ref};
 
 use crate::{
 	BlobError, DeserializeNode, DeserializeProperty, MemReserveEntries, NodeContext, Path,
 };
+pub use node::Node;
+pub use token::*;
 
 // on 16-bit platforms, the maximum valid devicetree size is i16::MAX
 #[cfg(target_pointer_width = "16")]
@@ -61,6 +60,11 @@ impl Header {
 /// Devicetree blob.
 ///
 /// Alignment: Same as `u64`.
+// type guarantees:
+// - size_of_val(self) >= Header::SIZE
+// - header fields off_dt_struct and size_dt_struct can be used to obtain an aligned and in-bounds
+//   block
+// - header fields off_dt_strings and size_dt_strings can be used to obtain an in-bounds block
 #[repr(transparent)]
 pub struct Devicetree {
 	blob: [u64],
@@ -78,7 +82,6 @@ impl Devicetree {
 	/// nonetheless. Alignment is not checked.
 	///
 	/// [Stacked Borrows]: https://plv.mpi-sws.org/rustbelt/stacked-borrows/
-	#[deny(unsafe_op_in_unsafe_fn)]
 	pub unsafe fn from_ptr(ptr: NonNull<u64>) -> Result<&'static Self> {
 		let ptr: *const u64 = ptr.as_ptr();
 		let size = unsafe {
@@ -87,13 +90,14 @@ impl Devicetree {
 			Self::totalsize(blob)
 		}?;
 
-		if size > isize::MAX as usize || usize::overflowing_add(ptr as usize, size).1 {
+		if isize::try_from(size).is_err() || usize::overflowing_add(ptr as usize, size).1 {
 			// the buffer occupies more than half of the address space or wraps around
 			return Err(BlobError::InvalidTotalsize);
 		}
 
 		// sometimes the dtb's length is not divisible by 8
 		let slice_len = (size + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN;
+		// SAFETY: Self::totalsize ensures that size >= Header::SIZE
 		unsafe { Self::from_slice_internal(slice::from_raw_parts(ptr, slice_len)) }
 	}
 
@@ -105,8 +109,9 @@ impl Devicetree {
 	/// [zerocopy]: https://docs.rs/zerocopy/0.7/zerocopy/struct.Ref.html
 	/// [bytemuck]: https://docs.rs/bytemuck/1/bytemuck/fn.try_cast_slice.html
 	pub fn from_slice(blob: &[u64]) -> Result<&Self> {
-		let len = Self::safe_checks(blob)?;
-		unsafe { Self::from_slice_internal(&blob[..len]) }
+		let size = Self::safe_checks(blob)?;
+		// SAFETY: Self::safe_checks ensures that size >= Header::SIZE
+		unsafe { Self::from_slice_internal(&blob[..size]) }
 	}
 
 	/// Constructs a devicetree from a vec containing a DTB.
@@ -118,15 +123,18 @@ impl Devicetree {
 	pub fn from_vec(mut blob: Vec<u64>) -> Result<Box<Self>> {
 		let len = Self::safe_checks(&blob)?;
 		blob.truncate(len);
+		// SAFETY: remaining type guarantees are checked in Self::late_checks
 		let this = unsafe { Self::from_box_unchecked(blob.into_boxed_slice()) };
 		this.late_checks()?;
 		Ok(this)
 	}
 
+	/// # Safety
+	/// `blob` has to contain a valid DTB.
 	#[cfg(feature = "alloc")]
 	#[inline]
 	pub(crate) unsafe fn from_box_unchecked(blob: Box<[u64]>) -> Box<Self> {
-		Box::from_raw(Box::into_raw(blob) as *mut Self)
+		unsafe { Box::from_raw(Box::into_raw(blob) as *mut Self) }
 	}
 
 	/// Constructs a devicetree from an unaligned slice containing a DTB.
@@ -141,7 +149,7 @@ impl Devicetree {
 			.ok_or(BlobError::UnexpectedEnd)?
 			.write(0);
 
-		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity
+		// SAFETY: after the requested buffer is filled with data, len can be set to the capacity
 		unsafe {
 			core::ptr::copy_nonoverlapping(
 				blob.as_ptr(),
@@ -157,17 +165,21 @@ impl Devicetree {
 	/// # Safety
 	/// `size_of_val(blob) >= Header::SIZE`
 	unsafe fn from_slice_internal(blob: &[u64]) -> Result<&Self> {
-		let this: &Self = core::mem::transmute(blob);
+		// SAFETY: remaining type guarantees are checked in Self::late_checks
+		let this: &Self = unsafe { core::mem::transmute(blob) };
 		this.late_checks()?;
 		Ok(this)
 	}
 
 	/// Returns the length that the blob should be trimmed to.
+	///
+	/// Ensures that `size_of_val(blob) >= size >= Header::SIZE`.
 	fn safe_checks(blob: &[u64]) -> Result<usize> {
 		if size_of_val(blob) < Header::SIZE {
 			return Err(BlobError::UnexpectedEnd);
 		}
 
+		// SAFETY: invariant is checked above
 		let size = unsafe {
 			Self::check_magic(blob)?;
 			Self::totalsize(blob)
@@ -185,7 +197,7 @@ impl Devicetree {
 	/// # Safety
 	/// `size_of_val(blob) >= Header::SIZE`
 	unsafe fn check_magic(blob: &[u64]) -> Result<()> {
-		if *(blob as *const _ as *const [u8; 4]) != DTB_MAGIC {
+		if unsafe { *(blob as *const _ as *const [u8; 4]) } != DTB_MAGIC {
 			return Err(BlobError::NoMagicSignature);
 		}
 
@@ -194,9 +206,10 @@ impl Devicetree {
 
 	/// The `totalsize` field of the devicetree blob header.
 	///
+	/// Ensures that `totalsize >= Header::SIZE`.
+	///
 	/// # Safety
 	/// `size_of_val(blob) >= Header::SIZE`
-	#[deny(unsafe_op_in_unsafe_fn)]
 	unsafe fn totalsize(blob: &[u64]) -> Result<usize> {
 		let header = blob as *const _ as *const Header;
 		let size = u32::from_be(unsafe { (*header).totalsize });
@@ -206,6 +219,11 @@ impl Devicetree {
 			.ok_or(BlobError::InvalidTotalsize)
 	}
 
+	/// Ensures that:
+	/// - header fields `off_dt_struct` and `size_dt_struct` can be used to obtain an aligned and
+	///   in-bounds block
+	/// - header fields `off_dt_strings` and `size_dt_strings` can be used to obtain an in-bounds
+	///   block
 	fn late_checks(&self) -> Result<()> {
 		let header = self.header();
 		if header.last_comp_version != LAST_COMPATIBLE_VERSION.to_be() {
@@ -239,7 +257,7 @@ impl Devicetree {
 
 	#[inline]
 	fn header(&self) -> &Header {
-		// Safety: length check was done in Self::totalsize
+		// SAFETY: type guarantees that the blob is large enough
 		unsafe { &*(self as *const _ as *const Header) }
 	}
 
@@ -295,7 +313,7 @@ impl Devicetree {
 		let offset = u32::from_be(header.off_dt_struct) as usize;
 		let len = u32::from_be(header.size_dt_struct) as usize;
 
-		// Safety: bounds check was done in Self::late_checks
+		// SAFETY: type guarantees that the block is in-bounds
 		unsafe {
 			crate::util::slice_get_with_len_unchecked(
 				self.blob_u32(),
@@ -310,7 +328,7 @@ impl Devicetree {
 		let header = self.header();
 		let offset = u32::from_be(header.off_dt_strings) as usize;
 		let len = u32::from_be(header.size_dt_strings) as usize;
-		// Safety: bounds check was done in Self::late_checks
+		// SAFETY: type guarantees that the block is in-bounds
 		unsafe { crate::util::slice_get_with_len_unchecked(self.blob_u8(), offset, len) }
 	}
 
@@ -392,8 +410,18 @@ impl<'a> From<&'a Devicetree> for &'a [u64] {
 
 #[cfg(feature = "alloc")]
 impl<'a> From<&'a Devicetree> for Box<Devicetree> {
-	fn from(dt: &'a Devicetree) -> Self {
-		unsafe { Devicetree::from_box_unchecked(dt.blob.into()) }
+	fn from(this: &'a Devicetree) -> Self {
+		this.to_owned()
+	}
+}
+
+#[cfg(feature = "alloc")]
+impl ToOwned for Devicetree {
+	type Owned = Box<Self>;
+
+	fn to_owned(&self) -> Self::Owned {
+		// SAFETY: self is a valid DTB
+		unsafe { Devicetree::from_box_unchecked(self.blob.into()) }
 	}
 }
 
@@ -439,15 +467,16 @@ impl<'dtb> Debug for Property<'dtb> {
 
 impl<'dtb> Display for Property<'dtb> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		const HEX_STRING: &[u8] = b"0123456789abcdef";
-
 		struct HexArray<const N: usize>([u8; N]);
 
 		impl<const N: usize> Display for HexArray<N> {
 			fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+				const HEX_STRING: &[u8] = b"0123456789abcdef";
+
 				let buf = self.0.map(|n| {
 					u16::from_ne_bytes([HEX_STRING[n as usize >> 4], HEX_STRING[n as usize & 0x0f]])
 				});
+				// SAFETY: all characters are from HEX_STRING and are thus valid UTF-8
 				f.write_str(unsafe { core::str::from_utf8_unchecked(buf.as_bytes()) })
 			}
 		}

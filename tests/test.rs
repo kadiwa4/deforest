@@ -39,10 +39,6 @@ fn cpu_count() {
 
 #[test]
 fn paths() {
-	const PATH0: &[&str] = &["soc", "rng"];
-	const PATH1: &[&str; 3] = &["soc", "gpio@7e200000", "i2c0"];
-	const PATH2: &str = "/soc/leds/act";
-
 	let dt = dt();
 
 	let root_node = dt.root_node().unwrap();
@@ -52,7 +48,7 @@ fn paths() {
 	let size_cells = soc_node.get_property("#size-cells").unwrap().unwrap();
 	let prop_value::SizeCells(size_cells) = size_cells.contextless_parse().unwrap();
 
-	let node0 = dt.get_node(PATH0).unwrap().unwrap();
+	let node0 = dt.get_node(&["soc", "rng"]).unwrap().unwrap();
 	let prop0 = node0.get_property("reg").unwrap().unwrap();
 	let mut cx = NodeContext::default();
 	cx.address_cells = address_cells;
@@ -65,11 +61,11 @@ fn paths() {
 		[RegBlock(0x7e104000, 0x10)]
 	);
 
-	let node1 = dt.get_node_strict(PATH1).unwrap().unwrap();
+	let node1 = dt.get_node_strict(&["soc", "gpio@7e200000", "i2c0"]).unwrap().unwrap();
 	let prop1 = node1.get_property("phandle").unwrap().unwrap();
 	assert_eq!(prop1.value(), [0, 0, 0, 0x0a]);
 
-	let node2 = dt.get_node_strict(PATH2).unwrap().unwrap();
+	let node2 = dt.get_node_strict("/soc/leds/act").unwrap().unwrap();
 	let prop2 = node2.get_property("label").unwrap().unwrap();
 	assert_eq!(prop2.contextless_parse::<&str>(), Ok("led0"));
 }

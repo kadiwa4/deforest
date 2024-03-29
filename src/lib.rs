@@ -4,6 +4,7 @@
 //! [spec]: https://www.devicetree.org/specifications
 
 #![no_std]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc as std_alloc;
@@ -17,10 +18,6 @@ pub mod blob;
 pub mod model;
 pub mod prop_value;
 
-#[cfg(feature = "derive")]
-pub use deforest_derive::*;
-pub use fallible_iterator;
-
 use core::{
 	any::Any,
 	fmt::{self, Display, Formatter},
@@ -28,6 +25,9 @@ use core::{
 };
 
 use ascii::AsciiStr;
+#[cfg(feature = "derive")]
+pub use deforest_derive::*;
+pub use fallible_iterator;
 use fallible_iterator::FallibleIterator;
 use zerocopy::{AsBytes, FromBytes, Ref};
 
@@ -446,7 +446,7 @@ pub mod util {
 		}
 		let mut ret: u128 = 0;
 		for &word in value.get(..cells as usize)? {
-			ret = (ret << 0x20) | u32::from_be(word) as u128;
+			ret = ret << 0x20 | u32::from_be(word) as u128;
 		}
 		*value = &value[cells as usize..];
 		Some(ret)
@@ -459,7 +459,7 @@ pub mod util {
 		let idx = usize::checked_sub(value.len(), cells as usize)?;
 		let mut ret: u128 = 0;
 		for &word in &value[idx..] {
-			ret = (ret << 0x20) | u32::from_be(word) as u128;
+			ret = ret << 0x20 | u32::from_be(word) as u128;
 		}
 		*value = &value[..idx];
 		Some(ret)
@@ -485,12 +485,15 @@ pub mod util {
 
 	/// Same as `<[_]>::get_unchecked` with a range except that it takes a length,
 	/// not an end offset.
+	///
+	/// # Safety
+	/// `offset + len >= slice.len()`
 	#[inline]
 	pub(crate) unsafe fn slice_get_with_len_unchecked<T>(
 		slice: &[T],
 		offset: usize,
 		len: usize,
 	) -> &[T] {
-		slice.get_unchecked(offset..offset + len)
+		unsafe { slice.get_unchecked(offset..offset + len) }
 	}
 }
