@@ -47,16 +47,27 @@ impl<'a> DevicetreeBuilder<'a> {
 	/// Throws [`Error::DevicetreeTooLarge`] or runs out of memory if it is too
 	/// large.
 	pub fn build(&self) -> Result<Box<Devicetree>> {
-		let struct_offset = blob::Header::SIZE
-			+ size_of_val(self.mem_reserve_entries)
-			+ size_of::<MemReserveEntry>();
-		let strings_offset = struct_offset + size_of_val(self.struct_blob);
-		let size = strings_offset + self.strings_blob.len();
+		self.build_inner().ok_or(Error::DevicetreeTooLarge)
+	}
 
-		let capacity = (size + blob::DTB_OPTIMAL_ALIGN - 1) / blob::DTB_OPTIMAL_ALIGN;
-		let size = u32::try_from(size).ok().ok_or(Error::DevicetreeTooLarge)?;
+	fn build_inner(&self) -> Option<Box<Devicetree>> {
+		let struct_offset = usize::checked_add(
+			blob::Header::SIZE + size_of::<MemReserveEntry>(),
+			size_of_val(self.mem_reserve_entries),
+		)?;
+		let strings_offset = usize::checked_add(struct_offset, size_of_val(self.struct_blob))?;
+		let size = usize::checked_add(strings_offset, self.strings_blob.len())?;
+
+		let capacity = usize::div_ceil(size, blob::DTB_OPTIMAL_ALIGN);
+		let size = u32::try_from(size).ok()?;
 
 		let mut blob: Vec<u64> = Vec::with_capacity(capacity);
+		// SAFETY: capacity > blob::Header::SIZE / blob::DTB_OPTIMAL_ALIGN,
+		// therefore this memory location is valid
+		unsafe {
+			blob.as_mut_ptr().add(capacity - 1).write(0);
+		}
+
 		blob.extend::<[u64; blob::Header::SIZE / blob::DTB_OPTIMAL_ALIGN]>(zerocopy::transmute!(
 			blob::Header {
 				magic: blob::DTB_MAGIC,
@@ -79,12 +90,9 @@ impl<'a> DevicetreeBuilder<'a> {
 				})
 			},
 		));
-		unsafe {
-			blob.as_mut_ptr().add(capacity - 1).write(0);
-		}
 		blob.extend([0; blob::RawReserveEntry::FIELD_COUNT]);
 
-		// Safety: after all of the requested capacity is filled with data, len can be set to the capacity.
+		// SAFETY: after the requested buffer is filled with data, len can be set to the capacity.
 		// the constructed Devicetree would pass all of the checks, so we can skip them
 		unsafe {
 			let ptr = blob.as_mut_ptr() as *mut u8;
@@ -100,7 +108,7 @@ impl<'a> DevicetreeBuilder<'a> {
 			);
 			blob.set_len(capacity);
 
-			Ok(Devicetree::from_box_unchecked(blob.into_boxed_slice()))
+			Some(Devicetree::from_box_unchecked(blob.into_boxed_slice()))
 		}
 	}
 }
