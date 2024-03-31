@@ -20,7 +20,7 @@ pub mod prop_value;
 
 use core::{
 	any::Any,
-	fmt::{self, Display, Formatter},
+	fmt::{self, Debug, Display, Formatter},
 	iter, slice,
 };
 
@@ -171,7 +171,7 @@ impl Path for str {
 
 	fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
 		let mut components = self.split('/');
-		if components.next() != Some("") {
+		if components.next() != Some("") || components.clone().next().is_none() {
 			return Err(Error::InvalidPath);
 		}
 		if self.len() == 1 {
@@ -213,6 +213,27 @@ impl<'dtb> FallibleIterator for MemReserveEntries<'dtb> {
 			size: u64::from_be(raw.size),
 		});
 		Ok(entry)
+	}
+}
+
+impl Debug for MemReserveEntries<'_> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		struct Inner<'dtb>(MemReserveEntries<'dtb>);
+
+		impl Debug for Inner<'_> {
+			fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+				f.debug_list().entries(self.0.clone().unwrap()).finish()
+			}
+		}
+
+		let res: Result<Inner<'_>, Error> = if let Err(err) = self.clone().fold((), |(), _| Ok(()))
+		{
+			Err(err)
+		} else {
+			Ok(Inner(self.clone()))
+		};
+
+		f.debug_tuple("MemReserveEntries").field(&res).finish()
 	}
 }
 
