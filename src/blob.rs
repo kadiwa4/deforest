@@ -34,8 +34,7 @@ type Result<T, E = BlobError> = core::result::Result<T, E>;
 pub(crate) const DTB_OPTIMAL_ALIGN: usize = 8;
 /// 4-byte magic signature of devicetree blobs.
 pub const DTB_MAGIC: [u8; 4] = 0xd00d_feed_u32.to_be_bytes();
-pub(crate) const LAST_COMPATIBLE_VERSION: u32 = 16;
-const MEM_RESERVE_BLOCK_OPTIMAL_ALIGN: usize = 8;
+pub(crate) const LAST_COMPATIBLE_VERSION: u32 = 0x10;
 const STRUCT_BLOCK_OPTIMAL_ALIGN: usize = 4;
 
 #[derive(AsBytes)]
@@ -219,6 +218,9 @@ impl Devicetree {
 			.ok_or(BlobError::InvalidTotalsize)
 	}
 
+	/// Given that:
+	/// - header field `totalsize` is valid
+	///
 	/// Ensures that:
 	/// - header fields `off_dt_struct` and `size_dt_struct` can be used to obtain an aligned and
 	///   in-bounds block
@@ -230,7 +232,7 @@ impl Devicetree {
 			return Err(BlobError::IncompatibleVersion);
 		}
 
-		let exact_size = u32::from_be(header.totalsize) as usize;
+		let exact_size = self.exact_size() as usize;
 		let (offset, size) = Option::zip(
 			usize::try_from(u32::from_be(header.off_dt_struct)).ok(),
 			usize::try_from(u32::from_be(header.size_dt_struct)).ok(),
@@ -271,7 +273,7 @@ impl Devicetree {
 
 	/// The devicetree blob specification version.
 	///
-	/// It has been at 17 ever since version 0.1 of the spec.
+	/// It has been at `0x11` ever since version 0.1 of the spec.
 	pub fn version(&self) -> u32 {
 		u32::from_be(self.header().version)
 	}
@@ -375,16 +377,16 @@ impl Devicetree {
 
 	/// Iterates over the memory reservation block.
 	pub fn mem_reserve_entries(&self) -> Result<MemReserveEntries<'_>> {
-		let offset = usize::try_from(u32::from_be(self.header().off_mem_rsvmap))
-			.map_err(|_| BlobError::BlockOutOfBounds)?;
-		if offset % MEM_RESERVE_BLOCK_OPTIMAL_ALIGN != 0 {
+		let offset = u32::from_be(self.header().off_mem_rsvmap);
+		if offset % DTB_OPTIMAL_ALIGN as u32 != 0 {
 			return Err(BlobError::UnalignedBlock);
 		}
 
+		let offset = usize::try_from(offset).map_err(|_| BlobError::BlockOutOfBounds)?;
 		Ok(MemReserveEntries {
 			blob: self
 				.blob
-				.get(offset / MEM_RESERVE_BLOCK_OPTIMAL_ALIGN..)
+				.get(offset / DTB_OPTIMAL_ALIGN..)
 				.ok_or(BlobError::BlockOutOfBounds)?,
 		})
 	}
@@ -563,5 +565,5 @@ pub(crate) struct RawReserveEntry {
 }
 
 impl RawReserveEntry {
-	pub const FIELD_COUNT: usize = size_of::<Self>() / MEM_RESERVE_BLOCK_OPTIMAL_ALIGN;
+	pub const FIELD_COUNT: usize = size_of::<Self>() / DTB_OPTIMAL_ALIGN;
 }
