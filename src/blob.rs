@@ -227,15 +227,14 @@ impl Devicetree {
 	/// - header fields `off_dt_strings` and `size_dt_strings` can be used to obtain an in-bounds
 	///   block
 	fn late_checks(&self) -> Result<()> {
-		let header = self.header();
-		if header.last_comp_version != LAST_COMPATIBLE_VERSION.to_be() {
+		if self.header().last_comp_version != LAST_COMPATIBLE_VERSION.to_be() {
 			return Err(BlobError::IncompatibleVersion);
 		}
 
 		let exact_size = self.exact_size() as usize;
 		let (offset, size) = Option::zip(
-			usize::try_from(u32::from_be(header.off_dt_struct)).ok(),
-			usize::try_from(u32::from_be(header.size_dt_struct)).ok(),
+			usize::try_from(u32::from_be(self.header().off_dt_struct)).ok(),
+			usize::try_from(u32::from_be(self.header().size_dt_struct)).ok(),
 		)
 		.filter(|&(o, s)| usize::checked_add(o, s).is_some_and(|e| e <= exact_size))
 		.ok_or(BlobError::BlockOutOfBounds)?;
@@ -245,8 +244,8 @@ impl Devicetree {
 		}
 
 		if !Option::zip(
-			usize::try_from(u32::from_be(header.off_dt_strings)).ok(),
-			usize::try_from(u32::from_be(header.size_dt_strings)).ok(),
+			usize::try_from(u32::from_be(self.header().off_dt_strings)).ok(),
+			usize::try_from(u32::from_be(self.header().size_dt_strings)).ok(),
 		)
 		.and_then(|(o, s)| usize::checked_add(o, s))
 		.is_some_and(|e| e <= exact_size)
@@ -311,9 +310,8 @@ impl Devicetree {
 
 	/// The blob data of the struct block.
 	pub fn struct_blob(&self) -> &[u32] {
-		let header = self.header();
-		let offset = u32::from_be(header.off_dt_struct) as usize;
-		let len = u32::from_be(header.size_dt_struct) as usize;
+		let offset = u32::from_be(self.header().off_dt_struct) as usize;
+		let len = u32::from_be(self.header().size_dt_struct) as usize;
 
 		// SAFETY: type guarantees that the block is in-bounds
 		unsafe {
@@ -325,11 +323,19 @@ impl Devicetree {
 		}
 	}
 
+	/// The devicetree blob, except it ends where the struct block ends.
+	fn blob_with_struct_block_end(&self) -> &[u8] {
+		let offset = u32::from_be(self.header().off_dt_struct) as usize;
+		let len = u32::from_be(self.header().size_dt_struct) as usize;
+
+		// SAFETY: type guarantees that the block is in-bounds
+		unsafe { self.blob_u8().get_unchecked(..offset + len) }
+	}
+
 	/// The blob data of the strings block.
 	pub fn strings_blob(&self) -> &[u8] {
-		let header = self.header();
-		let offset = u32::from_be(header.off_dt_strings) as usize;
-		let len = u32::from_be(header.size_dt_strings) as usize;
+		let offset = u32::from_be(self.header().off_dt_strings) as usize;
+		let len = u32::from_be(self.header().size_dt_strings) as usize;
 		// SAFETY: type guarantees that the block is in-bounds
 		unsafe { crate::util::slice_get_with_len_unchecked(self.blob_u8(), offset, len) }
 	}
@@ -383,10 +389,12 @@ impl Devicetree {
 		}
 
 		let offset = usize::try_from(offset).map_err(|_| BlobError::BlockOutOfBounds)?;
+		// type guarantees that `totalsize` is valid and the struct block is in-bounds
+		let end_offset = u32::from_be(self.header().off_dt_struct) as usize;
 		Ok(MemReserveEntries {
 			blob: self
 				.blob
-				.get(offset / DTB_OPTIMAL_ALIGN..)
+				.get(offset / DTB_OPTIMAL_ALIGN..end_offset / DTB_OPTIMAL_ALIGN)
 				.ok_or(BlobError::BlockOutOfBounds)?,
 		})
 	}

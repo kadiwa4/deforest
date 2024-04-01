@@ -37,7 +37,7 @@ right: {right}"
 #[derive(AsBytes, FromBytes, FromZeroes)]
 #[repr(C)]
 struct Header {
-	magic: [u8; 4],
+	magic: u32,
 	totalsize: u32,
 	off_dt_struct: u32,
 	off_dt_strings: u32,
@@ -51,13 +51,13 @@ struct Header {
 
 impl Header {
 	const EMPTY: Self = Self {
-		magic: deforest::blob::DTB_MAGIC,
+		magic: u32::from_ne_bytes(deforest::blob::DTB_MAGIC),
 		totalsize: 0x48_u32.to_be(),
 		off_dt_struct: 0x38_u32.to_be(),
 		off_dt_strings: 0x48_u32.to_be(),
 		off_mem_rsvmap: 0x28_u32.to_be(),
-		version: 17_u32.to_be(),
-		last_comp_version: 16_u32.to_be(),
+		version: 0x11_u32.to_be(),
+		last_comp_version: 0x10_u32.to_be(),
 		boot_cpuid_phys: 0,
 		size_dt_strings: 0,
 		size_dt_struct: 0x10_u32.to_be(),
@@ -70,7 +70,7 @@ impl Header {
 /// ```text
 /// BeginNode { c"" }, EndNode, End
 /// ```
-const EMPTY_BUF: [u64; 9] = [
+const MINIMAL_BUF: [u64; 9] = [
 	0,
 	0,
 	0,
@@ -256,7 +256,7 @@ macro_rules! blob {
 	} => {{
 		let mut buf = $buf_init;
 		let header = Header::mut_from_prefix(buf.as_bytes_mut()).unwrap();
-		*header = Header { $($field: $val,)* ..Header::EMPTY };
+		*header = Header { $($field: { let v: u32 = $val; v.to_be() },)* ..Header::EMPTY };
 		buf
 	}};
 }
@@ -281,7 +281,7 @@ fn empty() {
 	all_safe_ctors_return(&[], Some(BlobError::UnexpectedEnd));
 	all_safe_ctors_return(&[0], Some(BlobError::UnexpectedEnd));
 
-	let valid_empty = blob! { buf: EMPTY_BUF, header: {} };
+	let valid_empty = blob! { buf: MINIMAL_BUF, header: {} };
 	all_safe_ctors_return(&valid_empty, None);
 	let dt = Devicetree::from_slice(&valid_empty).unwrap();
 	assert_matches!(dt.root_node().unwrap().items().next().unwrap(), None);
@@ -291,26 +291,26 @@ fn empty() {
 fn err_invalid_header() {
 	all_ctors_return(
 		&blob! {
-			buf: EMPTY_BUF,
-			header: { magic: [0; 4], last_comp_version: 0x11 },
+			buf: MINIMAL_BUF,
+			header: { magic: 0, last_comp_version: 0x11 },
 		},
 		Some(BlobError::NoMagicSignature),
 	);
 	all_ctors_return(
 		&blob! {
-			buf: EMPTY_BUF,
+			buf: MINIMAL_BUF,
 			header: { last_comp_version: 0x11 },
 		},
 		Some(BlobError::IncompatibleVersion),
 	);
 	all_safe_ctors_return(
-		&blob! { buf: EMPTY_BUF, header: {} }[..5],
+		&blob! { buf: MINIMAL_BUF, header: {} }[..5],
 		Some(BlobError::InvalidTotalsize),
 	);
 	all_ctors_return(
 		&blob! {
-			buf: EMPTY_BUF,
-			header: { totalsize: 0x20_u32.to_be() },
+			buf: MINIMAL_BUF,
+			header: { totalsize: 0x20 },
 		},
 		Some(BlobError::InvalidTotalsize),
 	);
@@ -318,71 +318,11 @@ fn err_invalid_header() {
 
 #[test]
 fn err_invalid_blocks() {
-	// struct
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { off_dt_struct: 0x3a_u32.to_be(), size_dt_struct: 8_u32.to_be() },
-		},
-		Some(BlobError::UnalignedBlock),
-	);
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { size_dt_struct: 0x0e_u32.to_be() },
-		},
-		Some(BlobError::UnalignedBlock),
-	);
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { off_dt_struct: 0x40_u32.to_be() },
-		},
-		Some(BlobError::BlockOutOfBounds),
-	);
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { size_dt_struct: 0x18_u32.to_be() },
-		},
-		Some(BlobError::BlockOutOfBounds),
-	);
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { off_dt_struct: 0x8000_0038_u32.to_be(), size_dt_struct: 0x8000_0010_u32.to_be() },
-		},
-		Some(BlobError::BlockOutOfBounds),
-	);
-
-	// strings
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { off_dt_strings: 0x49_u32.to_be() },
-		},
-		Some(BlobError::BlockOutOfBounds),
-	);
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { size_dt_strings: 1_u32.to_be() },
-		},
-		Some(BlobError::BlockOutOfBounds),
-	);
-	all_ctors_return(
-		&blob! {
-			buf: EMPTY_BUF,
-			header: { off_dt_strings: 0x8000_0048_u32.to_be(), size_dt_strings: 0x8000_0000_u32.to_be() },
-		},
-		Some(BlobError::BlockOutOfBounds),
-	);
-
 	// mem reservation
 	assert_matches!(
 		Devicetree::from_slice(&blob! {
-			buf: EMPTY_BUF,
-			header: { off_mem_rsvmap: 0x2c_u32.to_be() },
+			buf: MINIMAL_BUF,
+			header: { off_mem_rsvmap: 0x2c },
 		})
 		.unwrap()
 		.mem_reserve_entries(),
@@ -390,12 +330,231 @@ fn err_invalid_blocks() {
 	);
 	assert_matches!(
 		Devicetree::from_slice(&blob! {
-			buf: EMPTY_BUF,
-			header: { off_mem_rsvmap: 0x8000_0028_u32.to_be() },
+			buf: MINIMAL_BUF,
+			header: { off_mem_rsvmap: 0x8000_0028 },
 		})
 		.unwrap()
 		.mem_reserve_entries(),
 		Err(BlobError::BlockOutOfBounds)
+	);
+
+	// struct
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_struct: 0x3a, size_dt_struct: 8 },
+		},
+		Some(BlobError::UnalignedBlock),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { size_dt_struct: 0x0e },
+		},
+		Some(BlobError::UnalignedBlock),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_struct: 0x40 },
+		},
+		Some(BlobError::BlockOutOfBounds),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { size_dt_struct: 0x18 },
+		},
+		Some(BlobError::BlockOutOfBounds),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_struct: 0x8000_0038, size_dt_struct: 0x8000_0010 },
+		},
+		Some(BlobError::BlockOutOfBounds),
+	);
+
+	// strings
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_strings: 0x49 },
+		},
+		Some(BlobError::BlockOutOfBounds),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { size_dt_strings: 1 },
+		},
+		Some(BlobError::BlockOutOfBounds),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_strings: 0x8000_0048, size_dt_strings: 0x8000_0000 },
+		},
+		Some(BlobError::BlockOutOfBounds),
+	);
+}
+
+#[test]
+fn err_unexpected_end() {
+	// mem reservation
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				u64::MAX,
+				0x0000_0001_0000_0000_u64.to_be(),
+				0x0000_0002_0000_0009_u64.to_be(),
+			],
+			header: {},
+		})
+		.unwrap()
+		.mem_reserve_entries()
+		.unwrap()
+		.fold((), |(), _| Ok(())),
+		Err(Error::Blob(BlobError::UnexpectedEnd))
+	);
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0x0000_0001_0000_0000_u64.to_be(),
+				0x0000_0002_0000_0009_u64.to_be(),
+			],
+			header: {
+				totalsize: 0x40,
+				off_dt_struct: 0x30,
+				off_dt_strings: 0x40,
+			},
+		})
+		.unwrap()
+		.mem_reserve_entries()
+		.unwrap()
+		.fold((), |(), _| Ok(())),
+		Err(Error::Blob(BlobError::UnexpectedEnd))
+	);
+
+	// struct
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: MINIMAL_BUF,
+			header: {
+				off_dt_strings: 0x40,
+				size_dt_strings: 8,
+				size_dt_struct: 8,
+			},
+		})
+		.unwrap()
+		.get_node(&["foo"]),
+		Err(Error::Blob(BlobError::UnexpectedEnd))
+	);
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: MINIMAL_BUF,
+			header: {
+				off_dt_strings: 0x3c,
+				size_dt_strings: 0xc,
+				size_dt_struct: 4,
+			},
+		})
+		.unwrap()
+		.root_node(),
+		Err(BlobError::InvalidString)
+	);
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0x0000_0001_0000_0000_u64.to_be(),
+				0x0000_0003_0000_0003_u64.to_be(),
+				0x0000_0001_6e6f_0000_u64.to_be(),
+			],
+			header: {
+				totalsize: 0x50,
+				size_dt_strings: 8,
+			},
+		})
+		.unwrap()
+		.get_node(&["foo"]),
+		Err(Error::Blob(BlobError::UnexpectedEnd))
+	);
+
+	// strings
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0x0000_0001_0000_0000_u64.to_be(),
+				0x0000_0003_0000_0003_u64.to_be(),
+				0x0000_0001_6e6f_0000_u64.to_be(),
+				0x0000_0002_0000_0009_u64.to_be(),
+			],
+			header: {
+				totalsize: 0x58,
+				off_dt_strings: 0x58,
+				size_dt_struct: 0x20,
+			},
+		})
+		.unwrap()
+		.root_node()
+		.unwrap()
+		.get_property("foo"),
+		Err(Error::Blob(BlobError::InvalidString))
+	);
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: [
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0,
+				0x0000_0001_0000_0000_u64.to_be(),
+				0x0000_0003_0000_0003_u64.to_be(),
+				0x0000_0000_6e6f_0000_u64.to_be(),
+				0x0000_0002_0000_0009_u64.to_be(),
+				0x666f_6f00_0000_0000_u64.to_be()
+			],
+			header: {
+				totalsize: 0x60,
+				off_dt_strings: 0x58,
+				size_dt_struct: 0x20,
+				size_dt_strings: 3,
+			},
+		})
+		.unwrap()
+		.root_node()
+		.unwrap()
+		.get_property("foo"),
+		Err(Error::Blob(BlobError::InvalidString))
 	);
 }
 

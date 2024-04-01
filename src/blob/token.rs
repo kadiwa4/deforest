@@ -126,9 +126,9 @@ impl Devicetree {
 			nameoff: u32,
 		}
 
-		let blob = self.blob_u8();
+		let blob = self.blob_with_struct_block_end();
 		loop {
-			let token = self.next_raw(cursor)?.ok_or(BlobError::UnexpectedEnd)?;
+			let token = next_raw(blob, cursor)?.ok_or(BlobError::UnexpectedEnd)?;
 			let offset = cursor.offset as usize;
 
 			let token = match token {
@@ -153,7 +153,7 @@ impl Devicetree {
 				}
 				RawToken::Prop => {
 					let header = PropHeader::read_from_prefix(&blob[offset..])
-						.ok_or(BlobError::InvalidPropertyHeader)?;
+						.ok_or(BlobError::UnexpectedEnd)?;
 
 					let name_blob = usize::try_from(u32::from_be(header.nameoff))
 						.ok()
@@ -184,30 +184,29 @@ impl Devicetree {
 			return Ok(Some(token));
 		}
 	}
+}
 
-	fn next_raw(&self, cursor: &mut Cursor) -> Result<Option<RawToken>> {
-		const BEGIN_NODE: u32 = RawToken::BeginNode as u32;
-		const END_NODE: u32 = RawToken::EndNode as u32;
-		const PROP: u32 = RawToken::Prop as u32;
-		const NOP: u32 = RawToken::Nop as u32;
-		const END: u32 = RawToken::End as u32;
+fn next_raw(blob: &[u8], cursor: &mut Cursor) -> Result<Option<RawToken>> {
+	const BEGIN_NODE: u32 = RawToken::BeginNode as u32;
+	const END_NODE: u32 = RawToken::EndNode as u32;
+	const PROP: u32 = RawToken::Prop as u32;
+	const NOP: u32 = RawToken::Nop as u32;
+	const END: u32 = RawToken::End as u32;
 
-		let offset = cursor.offset as usize;
-		let Some(token) = util::slice_get_with_len(self.blob_u8(), offset, TOKEN_SIZE as usize)
-		else {
-			return Ok(None);
-		};
-		let token = u32::from_ne_bytes(token.try_into().unwrap());
+	let offset = cursor.offset as usize;
+	let Some(token) = util::slice_get_with_len(blob, offset, TOKEN_SIZE as usize) else {
+		return Ok(None);
+	};
+	let token = u32::from_ne_bytes(token.try_into().unwrap());
 
-		cursor.offset += TOKEN_SIZE;
-		let token = match token {
-			BEGIN_NODE => RawToken::BeginNode,
-			END_NODE => RawToken::EndNode,
-			PROP => RawToken::Prop,
-			NOP => RawToken::Nop,
-			END => RawToken::End,
-			_ => return Err(BlobError::UnknownToken),
-		};
-		Ok(Some(token))
-	}
+	cursor.offset += TOKEN_SIZE;
+	let token = match token {
+		BEGIN_NODE => RawToken::BeginNode,
+		END_NODE => RawToken::EndNode,
+		PROP => RawToken::Prop,
+		NOP => RawToken::Nop,
+		END => RawToken::End,
+		_ => return Err(BlobError::UnknownToken),
+	};
+	Ok(Some(token))
 }
