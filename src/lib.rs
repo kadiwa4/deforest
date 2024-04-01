@@ -81,6 +81,7 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 pub enum BlobError {
 	BlockOutOfBounds,
 	IncompatibleVersion,
+	InvalidBlockOrder,
 	InvalidPropertyHeader,
 	InvalidRootNode,
 	InvalidString,
@@ -98,6 +99,7 @@ impl Display for BlobError {
 		let description = match *self {
 			Self::BlockOutOfBounds => "block out of bounds",
 			Self::IncompatibleVersion => "incompatible devicetree version",
+			Self::InvalidBlockOrder => "invalid block order",
 			Self::InvalidPropertyHeader => "invalid property header",
 			Self::InvalidRootNode => "invalid root node",
 			Self::InvalidString => "invalid string",
@@ -105,8 +107,8 @@ impl Display for BlobError {
 			Self::NoMagicSignature => "no magic signature",
 			Self::UnalignedBlock => "unaligned block",
 			Self::UnexpectedEnd => "unexpected end",
-			Self::UnexpectedEndToken => "unexpected END token",
-			Self::UnexpectedEndNodeToken => "unexpected END_NODE token",
+			Self::UnexpectedEndToken => "unexpected End token",
+			Self::UnexpectedEndNodeToken => "unexpected EndNode token",
 			Self::UnknownToken => "unknown token",
 		};
 		write!(f, "devicetree blob error: {description}")

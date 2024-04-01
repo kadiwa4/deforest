@@ -331,7 +331,7 @@ fn err_invalid_blocks() {
 	assert_matches!(
 		Devicetree::from_slice(&blob! {
 			buf: MINIMAL_BUF,
-			header: { off_mem_rsvmap: 0x8000_0028 },
+			header: { off_mem_rsvmap: 0x20 },
 		})
 		.unwrap()
 		.mem_reserve_entries(),
@@ -352,6 +352,13 @@ fn err_invalid_blocks() {
 			header: { size_dt_struct: 0x0e },
 		},
 		Some(BlobError::UnalignedBlock),
+	);
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_struct: 0x24 },
+		},
+		Some(BlobError::BlockOutOfBounds),
 	);
 	all_ctors_return(
 		&blob! {
@@ -396,6 +403,29 @@ fn err_invalid_blocks() {
 			header: { off_dt_strings: 0x8000_0048, size_dt_strings: 0x8000_0000 },
 		},
 		Some(BlobError::BlockOutOfBounds),
+	);
+}
+
+#[test]
+fn err_invalid_block_order() {
+	// mem reservation / struct
+	assert_matches!(
+		Devicetree::from_slice(&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_mem_rsvmap: 0x40 },
+		})
+		.unwrap()
+		.mem_reserve_entries(),
+		Err(BlobError::InvalidBlockOrder)
+	);
+
+	// struct / strings
+	all_ctors_return(
+		&blob! {
+			buf: MINIMAL_BUF,
+			header: { off_dt_strings: 0x47 },
+		},
+		Some(BlobError::InvalidBlockOrder),
 	);
 }
 

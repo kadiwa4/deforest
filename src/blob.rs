@@ -232,23 +232,33 @@ impl Devicetree {
 		}
 
 		let exact_size = self.exact_size() as usize;
-		let (offset, size) = Option::zip(
-			usize::try_from(u32::from_be(self.header().off_dt_struct)).ok(),
+		let (struct_offset, struct_size) = Option::zip(
+			usize::try_from(u32::from_be(self.header().off_dt_struct))
+				.ok()
+				.filter(|&o| o >= Header::SIZE),
 			usize::try_from(u32::from_be(self.header().size_dt_struct)).ok(),
 		)
-		.filter(|&(o, s)| usize::checked_add(o, s).is_some_and(|e| e <= exact_size))
 		.ok_or(BlobError::BlockOutOfBounds)?;
+		let struct_end_offset = usize::checked_add(struct_offset, struct_size)
+			.filter(|&e| e <= exact_size)
+			.ok_or(BlobError::BlockOutOfBounds)?;
 
-		if offset % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 || size % STRUCT_BLOCK_OPTIMAL_ALIGN != 0 {
+		if struct_offset % STRUCT_BLOCK_OPTIMAL_ALIGN != 0
+			|| struct_size % STRUCT_BLOCK_OPTIMAL_ALIGN != 0
+		{
 			return Err(BlobError::UnalignedBlock);
 		}
 
-		if !Option::zip(
-			usize::try_from(u32::from_be(self.header().off_dt_strings)).ok(),
-			usize::try_from(u32::from_be(self.header().size_dt_strings)).ok(),
-		)
-		.and_then(|(o, s)| usize::checked_add(o, s))
-		.is_some_and(|e| e <= exact_size)
+		let strings_offset = usize::try_from(u32::from_be(self.header().off_dt_strings))
+			.map_err(|_| BlobError::BlockOutOfBounds)?;
+		if struct_end_offset > strings_offset {
+			return Err(BlobError::InvalidBlockOrder);
+		}
+
+		if !usize::try_from(u32::from_be(self.header().size_dt_strings))
+			.ok()
+			.and_then(|s| usize::checked_add(strings_offset, s))
+			.is_some_and(|e| e <= exact_size)
 		{
 			return Err(BlobError::BlockOutOfBounds);
 		}
@@ -388,14 +398,17 @@ impl Devicetree {
 			return Err(BlobError::UnalignedBlock);
 		}
 
-		let offset = usize::try_from(offset).map_err(|_| BlobError::BlockOutOfBounds)?;
+		let offset = usize::try_from(offset)
+			.ok()
+			.filter(|&o| o >= Header::SIZE)
+			.ok_or(BlobError::BlockOutOfBounds)?;
 		// type guarantees that `totalsize` is valid and the struct block is in-bounds
 		let end_offset = u32::from_be(self.header().off_dt_struct) as usize;
 		Ok(MemReserveEntries {
 			blob: self
 				.blob
 				.get(offset / DTB_OPTIMAL_ALIGN..end_offset / DTB_OPTIMAL_ALIGN)
-				.ok_or(BlobError::BlockOutOfBounds)?,
+				.ok_or(BlobError::InvalidBlockOrder)?,
 		})
 	}
 }
