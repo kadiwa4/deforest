@@ -218,22 +218,17 @@ impl<'dtb> FallibleIterator for MemReserveEntries<'dtb> {
 
 impl Debug for MemReserveEntries<'_> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		struct Inner<'dtb>(MemReserveEntries<'dtb>);
-
-		impl Debug for Inner<'_> {
-			fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-				f.debug_list().entries(self.0.clone().unwrap()).finish()
+		let mut iter = self.clone();
+		let mut list = f.debug_list();
+		loop {
+			match iter.next() {
+				Ok(None) => return list.finish(),
+				Ok(Some(entry)) => {
+					list.entry(&entry);
+				}
+				Err(_) => return Err(fmt::Error),
 			}
 		}
-
-		let res: Result<Inner<'_>, Error> = if let Err(err) = self.clone().fold((), |(), _| Ok(()))
-		{
-			Err(err)
-		} else {
-			Ok(Inner(self.clone()))
-		};
-
-		f.debug_tuple("MemReserveEntries").field(&res).finish()
 	}
 }
 
