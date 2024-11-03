@@ -53,7 +53,7 @@ pub(crate) struct Header {
 }
 
 impl Header {
-	pub const SIZE: usize = size_of::<Self>();
+	pub(crate) const SIZE: usize = size_of::<Self>();
 }
 
 /// Devicetree blob.
@@ -150,11 +150,8 @@ impl Devicetree {
 
 		// SAFETY: after the requested buffer is filled with data, len can be set to the capacity
 		unsafe {
-			core::ptr::copy_nonoverlapping(
-				blob.as_ptr(),
-				aligned_blob.as_mut_ptr() as *mut u8,
-				blob.len(),
-			);
+			(aligned_blob.as_mut_ptr() as *mut u8)
+				.copy_from_nonoverlapping(blob.as_ptr(), blob.len());
 			aligned_blob.set_len(capacity);
 		}
 
@@ -586,5 +583,5 @@ pub(crate) struct RawReserveEntry {
 }
 
 impl RawReserveEntry {
-	pub const FIELD_COUNT: usize = size_of::<Self>() / DTB_OPTIMAL_ALIGN;
+	pub(crate) const FIELD_COUNT: usize = size_of::<Self>() / DTB_OPTIMAL_ALIGN;
 }

@@ -18,6 +18,7 @@ use crate::{
 
 /// Starting point for constructing a [`Devicetree`] yourself.
 #[derive(Clone, Debug)]
+#[must_use]
 #[non_exhaustive]
 pub struct DevicetreeBuilder<'a> {
 	/// Defaults to 0.
@@ -96,16 +97,10 @@ impl<'a> DevicetreeBuilder<'a> {
 		// the constructed Devicetree would pass all of the checks, so we can skip them
 		unsafe {
 			let ptr = blob.as_mut_ptr() as *mut u8;
-			core::ptr::copy_nonoverlapping(
-				self.struct_blob.as_ptr(),
-				ptr.add(struct_offset) as *mut u32,
-				self.struct_blob.len(),
-			);
-			core::ptr::copy_nonoverlapping(
-				self.strings_blob.as_ptr(),
-				ptr.add(strings_offset),
-				self.strings_blob.len(),
-			);
+			(ptr.add(struct_offset) as *mut u32)
+				.copy_from_nonoverlapping(self.struct_blob.as_ptr(), self.struct_blob.len());
+			ptr.add(strings_offset)
+				.copy_from_nonoverlapping(self.strings_blob.as_ptr(), self.strings_blob.len());
 			blob.set_len(capacity);
 
 			Some(Devicetree::from_box_unchecked(blob.into_boxed_slice()))

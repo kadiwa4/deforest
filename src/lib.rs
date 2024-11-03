@@ -173,7 +173,7 @@ impl Path for str {
 
 	fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
 		let mut components = self.split('/');
-		if components.next() != Some("") || components.clone().next().is_none() {
+		if self.is_empty() || components.next() != Some("") {
 			return Err(Error::InvalidPath);
 		}
 		if self.len() == 1 {
@@ -197,6 +197,7 @@ pub struct MemReserveEntry {
 ///
 /// [`Devicetree`]: blob::Devicetree
 #[derive(Clone)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct MemReserveEntries<'dtb> {
 	blob: &'dtb [u64],
 }

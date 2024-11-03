@@ -2,12 +2,18 @@
 members = ["deforest_derive"]
 
 [workspace.lints.rust]
-rust_2018_idioms = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
 macro_use_extern_crate = "warn"
 meta_variable_misuse = "warn"
 missing_abi = "warn"
+redundant_lifetimes = "warn"
+unnameable_types = "warn"
+unreachable_pub = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
+
+[workspace.lints.rustdoc]
+unescaped_backticks = "warn"
 
 [package]
 name = "deforest"
@@ -50,9 +56,10 @@ zerocopy = { version = "0.7.31", default-features = false, features = ["derive"]
 
 [features]
 alloc = ["fallible-iterator/alloc"]
+std = ["alloc", "fallible-iterator/std"]
+
 derive = ["deforest_derive"]
 model = []
-std = ["alloc", "fallible-iterator/std"]
 
 [lints]
 workspace = true
