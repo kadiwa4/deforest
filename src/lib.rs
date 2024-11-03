@@ -29,7 +29,7 @@ use ascii::AsciiStr;
 pub use deforest_derive::*;
 pub use fallible_iterator;
 use fallible_iterator::FallibleIterator;
-use zerocopy::{AsBytes, FromBytes, Ref};
+use zerocopy::{FromBytes, IntoBytes};
 
 use blob::{Cursor, Item, Node, Property};
 
@@ -207,8 +207,8 @@ impl<'dtb> FallibleIterator for MemReserveEntries<'dtb> {
 	type Error = Error;
 
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-		let raw = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
-			.ok_or(BlobError::UnexpectedEnd)?;
+		let (raw, _) = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
+			.map_err(|_| BlobError::UnexpectedEnd)?;
 		self.blob = &self.blob[blob::RawReserveEntry::FIELD_COUNT..];
 
 		let entry = (raw.address != 0 || raw.size != 0).then(|| MemReserveEntry {
@@ -345,10 +345,7 @@ impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u8] {
 impl<'dtb> DeserializeProperty<'dtb> for &'dtb [u32] {
 	/// Gives a devicetree property value as a big-endian u32 slice.
 	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
-		match Ref::new_slice(blob_prop.value()) {
-			Some(val) => Ok(val.into_slice()),
-			None => Err(Error::UnsuitableProperty),
-		}
+		<[u32]>::ref_from_bytes(blob_prop.value()).map_err(|_| Error::UnsuitableProperty)
 	}
 }
 

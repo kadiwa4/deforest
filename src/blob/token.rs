@@ -4,7 +4,7 @@ use core::{
 	mem::size_of,
 };
 
-use zerocopy::{FromBytes, FromZeroes};
+use zerocopy::FromBytes;
 
 use super::{BlobError, Devicetree, DtUint, Item, Node, Property, Result};
 use crate::util;
@@ -119,7 +119,7 @@ impl Devicetree {
 
 	/// Returns the token pointed to by the cursor and advance the cursor.
 	pub fn next_token(&self, cursor: &mut Cursor) -> Result<Option<Token<'_>>> {
-		#[derive(FromBytes, FromZeroes)]
+		#[derive(FromBytes)]
 		#[repr(C)]
 		struct PropHeader {
 			len: u32,
@@ -152,8 +152,8 @@ impl Devicetree {
 					Token::EndNode
 				}
 				RawToken::Prop => {
-					let header = PropHeader::read_from_prefix(&blob[offset..])
-						.ok_or(BlobError::UnexpectedEnd)?;
+					let (header, _) = PropHeader::read_from_prefix(&blob[offset..])
+						.map_err(|_| BlobError::UnexpectedEnd)?;
 
 					let name_blob = usize::try_from(u32::from_be(header.nameoff))
 						.ok()

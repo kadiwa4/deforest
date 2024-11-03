@@ -7,7 +7,7 @@ use deforest::{
 	prop_value::{self, RegBlock},
 	BlobError, DeserializeProperty, Error, NodeContext,
 };
-use zerocopy::{AsBytes, FromBytes, FromZeroes};
+use zerocopy::{FromBytes, IntoBytes, KnownLayout};
 
 const UNALIGNED_BLOB: &[u8] = include_bytes!("tree.dtb");
 const FORMATTED: &str = include_str!("formatted.txt");
@@ -34,7 +34,7 @@ right: {right}"
 	);
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(FromBytes, IntoBytes, KnownLayout)]
 #[repr(C)]
 struct Header {
 	magic: u32,
@@ -255,7 +255,7 @@ macro_rules! blob {
 		header: { $($field:ident: $val:expr),* $(,)? } $(,)?
 	} => {{
 		let mut buf = $buf_init;
-		let header = Header::mut_from_prefix(buf.as_bytes_mut()).unwrap();
+		let (header, _) = Header::mut_from_prefix(buf.as_mut_bytes()).unwrap();
 		*header = Header { $($field: { let v: u32 = $val; v.to_be() },)* ..Header::EMPTY };
 		buf
 	}};

@@ -16,7 +16,7 @@ use core::{
 #[cfg(feature = "alloc")]
 use std_alloc::{borrow::ToOwned, boxed::Box, vec::Vec};
 
-use zerocopy::{AsBytes, FromBytes, FromZeroes, Ref};
+use zerocopy::{FromBytes, IntoBytes};
 
 use crate::{
 	BlobError, DeserializeNode, DeserializeProperty, MemReserveEntries, NodeContext, Path,
@@ -37,7 +37,7 @@ pub const DTB_MAGIC: [u8; 4] = 0xd00d_feed_u32.to_be_bytes();
 pub(crate) const LAST_COMPATIBLE_VERSION: u32 = 0x10;
 const STRUCT_BLOCK_OPTIMAL_ALIGN: usize = 4;
 
-#[derive(AsBytes)]
+#[derive(IntoBytes)]
 #[repr(C)]
 pub(crate) struct Header {
 	pub magic: [u8; 4],
@@ -103,9 +103,10 @@ impl Devicetree {
 	/// Constructs a devicetree from a slice containing a DTB.
 	///
 	/// If you only have a `&[u8]` value, consider using
-	/// [`zerocopy::Ref`][zerocopy] or [`bytemuck::try_cast_slice`][bytemuck].
+	/// [`zerocopy::FromBytes::ref_from_bytes`][zerocopy] or
+	/// [`bytemuck::try_cast_slice`][bytemuck].
 	///
-	/// [zerocopy]: https://docs.rs/zerocopy/0.7/zerocopy/struct.Ref.html
+	/// [zerocopy]: https://docs.rs/zerocopy/0.8/zerocopy/trait.FromBytes.html#method.ref_from_bytes
 	/// [bytemuck]: https://docs.rs/bytemuck/1/bytemuck/fn.try_cast_slice.html
 	pub fn from_slice(blob: &[u64]) -> Result<&Self> {
 		let size = Self::safe_checks(blob)?;
@@ -306,7 +307,7 @@ impl Devicetree {
 	/// The blob data as a `u32` slice.
 	#[inline]
 	pub fn blob_u32(&self) -> &[u32] {
-		Ref::new_slice(self.blob_u8()).unwrap().into_slice()
+		<[u32]>::ref_from_bytes(self.blob_u8()).unwrap()
 	}
 
 	/// The blob data as a `u64` slice.
@@ -575,7 +576,7 @@ impl<'dtb> Item<'dtb> {
 	}
 }
 
-#[derive(AsBytes, FromBytes, FromZeroes)]
+#[derive(FromBytes, IntoBytes)]
 #[repr(C)]
 pub(crate) struct RawReserveEntry {
 	pub address: u64,
