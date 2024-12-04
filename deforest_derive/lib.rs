@@ -217,6 +217,7 @@ pub fn derive_deserialize_node(tokens: proc_macro::TokenStream) -> proc_macro::T
 		})
 	};
 	quote! {
+		#[automatically_derived]
 		impl #impl_generics ::deforest::DeserializeNode<'dtb> for #name #ty_generics #where_clause {
 			fn deserialize(
 				blob_node: &::deforest::blob::Node<'dtb>,
