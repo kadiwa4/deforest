@@ -9,7 +9,6 @@ mod token;
 
 use core::{
 	fmt::{self, Debug, Display, Formatter, Write},
-	mem::{size_of, size_of_val},
 	ptr::NonNull,
 	slice,
 };
@@ -253,10 +252,10 @@ impl Devicetree {
 			return Err(BlobError::InvalidBlockOrder);
 		}
 
-		if !usize::try_from(u32::from_be(self.header().size_dt_strings))
+		if usize::try_from(u32::from_be(self.header().size_dt_strings))
 			.ok()
 			.and_then(|s| usize::checked_add(strings_offset, s))
-			.is_some_and(|e| e <= exact_size)
+			.is_none_or(|e| e > exact_size)
 		{
 			return Err(BlobError::BlockOutOfBounds);
 		}
@@ -584,5 +583,5 @@ pub(crate) struct RawReserveEntry {
 }
 
 impl RawReserveEntry {
-	pub(crate) const FIELD_COUNT: usize = size_of::<Self>() / DTB_OPTIMAL_ALIGN;
+	pub(crate) const NUM_FIELDS: usize = size_of::<Self>() / DTB_OPTIMAL_ALIGN;
 }

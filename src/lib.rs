@@ -8,8 +8,6 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc as std_alloc;
-#[cfg(feature = "std")]
-extern crate std;
 
 #[cfg(feature = "alloc")]
 pub mod alloc;
@@ -70,8 +68,7 @@ impl Display for Error {
 	}
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
@@ -115,8 +112,7 @@ impl Display for BlobError {
 	}
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BlobError {}
+impl core::error::Error for BlobError {}
 
 impl From<BlobError> for Error {
 	#[inline]
@@ -212,7 +208,7 @@ impl FallibleIterator for MemReserveEntries<'_> {
 	fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		let (raw, _) = blob::RawReserveEntry::read_from_prefix(self.blob.as_bytes())
 			.map_err(|_| BlobError::UnexpectedEnd)?;
-		self.blob = &self.blob[blob::RawReserveEntry::FIELD_COUNT..];
+		self.blob = &self.blob[blob::RawReserveEntry::NUM_FIELDS..];
 
 		let entry = (raw.address != 0 || raw.size != 0).then(|| MemReserveEntry {
 			address: u64::from_be(raw.address),
@@ -464,10 +460,11 @@ pub mod util {
 			return None;
 		}
 		let mut ret: u128 = 0;
-		for &word in value.get(..cells as usize)? {
+		let (content, rest) = value.split_at_checked(cells as usize)?;
+		for &word in content {
 			ret = ret << 0x20 | u32::from_be(word) as u128;
 		}
-		*value = &value[cells as usize..];
+		*value = rest;
 		Some(ret)
 	}
 
@@ -493,13 +490,6 @@ pub mod util {
 
 	pub(crate) fn str_from_ascii(blob: &[u8]) -> Option<&str> {
 		AsciiStr::from_ascii(blob).ok().map(AsciiStr::as_str)
-	}
-
-	/// Same as `<[_]>::get` with a range except that it takes a length, not an end
-	/// offset.
-	#[inline]
-	pub(crate) fn slice_get_with_len<T>(slice: &[T], offset: usize, len: usize) -> Option<&[T]> {
-		slice.get(offset..offset + len)
 	}
 
 	/// Same as `<[_]>::get_unchecked` with a range except that it takes a length,

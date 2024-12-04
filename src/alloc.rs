@@ -1,10 +1,6 @@
 //! Features depending on memory allocation.
 
-use core::{
-	iter::Map,
-	mem::{size_of, size_of_val},
-	slice,
-};
+use core::{iter::Map, slice};
 use std_alloc::{boxed::Box, string::String, vec::Vec};
 
 use fallible_iterator::FallibleIterator;
@@ -84,14 +80,14 @@ impl<'a> DevicetreeBuilder<'a> {
 			}
 		));
 		blob.extend(self.mem_reserve_entries.iter().flat_map(
-			|e| -> [u64; blob::RawReserveEntry::FIELD_COUNT] {
+			|e| -> [u64; blob::RawReserveEntry::NUM_FIELDS] {
 				zerocopy::transmute!(blob::RawReserveEntry {
 					address: e.address.to_be(),
 					size: e.size.to_be(),
 				})
 			},
 		));
-		blob.extend([0; blob::RawReserveEntry::FIELD_COUNT]);
+		blob.extend([0; blob::RawReserveEntry::NUM_FIELDS]);
 
 		// SAFETY: after the requested buffer is filled with data, len can be set to the capacity.
 		// the constructed Devicetree would pass all of the checks, so we can skip them

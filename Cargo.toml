@@ -19,7 +19,7 @@ unescaped_backticks = "warn"
 name = "deforest"
 version = "0.3.2"
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.82.0"
 description = "efficient `#![no_std]` parser for devicetree blobs"
 repository = "https://github.com/kadiwa4/deforest"
 license = "MIT"
@@ -56,7 +56,6 @@ zerocopy = { version = "0.8.7", features = ["derive"] }
 
 [features]
 alloc = ["fallible-iterator/alloc"]
-std = ["alloc", "fallible-iterator/std"]
 
 derive = ["deforest_derive"]
 model = []

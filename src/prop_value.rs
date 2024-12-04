@@ -561,7 +561,10 @@ impl<'dtb> DeserializeProperty<'dtb> for SmallU64 {
 	}
 }
 
-/// Zero-sized type that throws if the property value isn't `"memory"`.
+/// Zero-sized type that throws [an error] if the property value isn't
+/// `"memory"`.
+///
+/// [an error]: Error::InvalidDeviceType
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceTypeMemory;
 
@@ -575,7 +578,9 @@ impl<'dtb> DeserializeProperty<'dtb> for DeviceTypeMemory {
 	}
 }
 
-/// Zero-sized type that throws if the property value isn't `"cpu"`.
+/// Zero-sized type that throws [an error] if the property value isn't `"cpu"`.
+///
+/// [an error]: Error::InvalidDeviceType
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceTypeCpu;
 

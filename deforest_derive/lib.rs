@@ -328,10 +328,10 @@ Valid forms are:
 		"children" => match meta {
 			Meta::Path(_) => Some((ItemKind::Children, None)),
 			Meta::List(list) => {
-				if !meta_list_get_single(&list)
+				if meta_list_get_single(&list)
 					.as_ref()
 					.and_then(|i| i.path().get_ident())
-					.is_some_and(|i| *i == "rest")
+					.is_none_or(|i| *i != "rest")
 				{
 					panic_invalid();
 				}

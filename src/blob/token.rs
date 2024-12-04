@@ -1,7 +1,6 @@
 use core::{
 	cmp::Ordering,
 	hash::{Hash, Hasher},
-	mem::size_of,
 };
 
 use zerocopy::FromBytes;
@@ -167,7 +166,8 @@ impl Devicetree {
 
 					let len = DtUint::try_from(u32::from_be(header.len))
 						.map_err(|_| BlobError::InvalidPropertyHeader)?;
-					let value = util::slice_get_with_len(blob, offset, len as usize)
+					let value = blob
+						.get(offset..offset + len as usize)
 						.ok_or(BlobError::InvalidPropertyHeader)?;
 
 					cursor.increase_offset(len, blob)?;
@@ -196,13 +196,12 @@ fn next_raw(blob: &[u8], cursor: &mut Cursor) -> Result<Option<RawToken>> {
 	const END: u32 = RawToken::End as u32;
 
 	let offset = cursor.offset as usize;
-	let Some(token) = util::slice_get_with_len(blob, offset, TOKEN_SIZE as usize) else {
+	let Some(&token) = blob[offset..].first_chunk::<{ TOKEN_SIZE as usize }>() else {
 		return Ok(None);
 	};
-	let token = u32::from_ne_bytes(token.try_into().unwrap());
 
 	cursor.offset += TOKEN_SIZE;
-	let token = match token {
+	let token = match u32::from_ne_bytes(token) {
 		BEGIN_NODE => RawToken::BeginNode,
 		END_NODE => RawToken::EndNode,
 		PROP => RawToken::Prop,

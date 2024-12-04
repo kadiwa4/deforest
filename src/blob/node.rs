@@ -143,7 +143,8 @@ impl<'dtb> Node<'dtb> {
 	pub fn get_children<'n>(
 		&self,
 		name: &'n str,
-	) -> fallible_iterator::Filter<Children<'dtb>, impl FnMut(&Node<'dtb>) -> Result<bool> + 'n> {
+	) -> fallible_iterator::Filter<Children<'dtb>, impl FnMut(&Self) -> Result<bool> + use<'dtb, 'n>>
+	{
 		Children(Items::new(self, self.contents))
 			.filter(move |n| n.split_name().map(|(n, _)| n == name))
 	}
