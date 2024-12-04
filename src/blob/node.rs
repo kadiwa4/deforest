@@ -110,7 +110,7 @@ impl<'dtb> Node<'dtb> {
 	/// The input string needs not match the node name exactly; the unit address
 	/// (the part starting with an `@`) can be left out. If it is, the node name
 	/// has to be unambiguous.
-	pub fn get_child(&self, name: &str) -> Result<Option<Node<'dtb>>> {
+	pub fn get_child(&self, name: &str) -> Result<Option<Self>> {
 		let mut iter = Children(Items::new(self, self.contents));
 		if crate::util::split_node_name(name)?.1.is_some() {
 			iter.find(|n| Ok(n.name()? == name))
@@ -133,7 +133,7 @@ impl<'dtb> Node<'dtb> {
 	///
 	/// The input string has to match the node name exactly; the unit address
 	/// (the part starting with an `@`) cannot be left out.
-	pub fn get_child_strict(&self, name: &str) -> Result<Option<Node<'dtb>>> {
+	pub fn get_child_strict(&self, name: &str) -> Result<Option<Self>> {
 		Children(Items::new(self, self.contents)).find_by_name(|n| n == name)
 	}
 
@@ -149,7 +149,7 @@ impl<'dtb> Node<'dtb> {
 	}
 }
 
-impl<'dtb> Display for Node<'dtb> {
+impl Display for Node<'_> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		fn write_indent(f: &mut Formatter<'_>, depth: DtUint) -> fmt::Result {
 			for _ in 0..depth {
@@ -501,7 +501,7 @@ impl BaseRange {
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct NamedRangeIter<'dtb>(Option<NamedRangeIterInner<'dtb>>);
 
-impl<'dtb> NamedRangeIter<'dtb> {
+impl NamedRangeIter<'_> {
 	/// Default empty iterator.
 	pub const EMPTY: Self = Self(None);
 

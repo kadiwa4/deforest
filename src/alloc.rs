@@ -59,7 +59,7 @@ impl<'a> DevicetreeBuilder<'a> {
 		let strings_offset = usize::checked_add(struct_offset, size_of_val(self.struct_blob))?;
 		let size = usize::checked_add(strings_offset, self.strings_blob.len())?;
 
-		let capacity = usize::div_ceil(size, blob::DTB_OPTIMAL_ALIGN);
+		let capacity = size.div_ceil(blob::DTB_OPTIMAL_ALIGN);
 		let size = u32::try_from(size).ok()?;
 
 		let mut blob: Vec<u64> = Vec::with_capacity(capacity);
@@ -109,9 +109,10 @@ impl<'a> DevicetreeBuilder<'a> {
 }
 
 impl Path for [String] {
-	type ComponentsIter<'a> = Map<slice::Iter<'a, String>, fn(&String) -> &str>
-		where
-			Self: 'a;
+	type ComponentsIter<'a>
+		= Map<slice::Iter<'a, String>, fn(&String) -> &str>
+	where
+		Self: 'a;
 
 	fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
 		Ok(self.iter().map(String::as_str))
@@ -119,9 +120,10 @@ impl Path for [String] {
 }
 
 impl<const N: usize> Path for [String; N] {
-	type ComponentsIter<'a> = Map<slice::Iter<'a, String>, fn(&String) -> &str>
-		where
-			Self: 'a;
+	type ComponentsIter<'a>
+		= Map<slice::Iter<'a, String>, fn(&String) -> &str>
+	where
+		Self: 'a;
 
 	fn as_components(&self) -> Result<Self::ComponentsIter<'_>> {
 		Ok(self.iter().map(String::as_str))

@@ -146,8 +146,9 @@ pub trait Path {
 	fn as_components(&self) -> Result<Self::ComponentsIter<'_>>;
 }
 
-impl<'b> Path for [&'b str] {
-	type ComponentsIter<'a> = iter::Copied<slice::Iter<'a, &'a str>>
+impl Path for [&str] {
+	type ComponentsIter<'a>
+		= iter::Copied<slice::Iter<'a, &'a str>>
 	where
 		Self: 'a;
 
@@ -156,8 +157,9 @@ impl<'b> Path for [&'b str] {
 	}
 }
 
-impl<'b, const N: usize> Path for [&'b str; N] {
-	type ComponentsIter<'a> = iter::Copied<slice::Iter<'a, &'a str>>
+impl<const N: usize> Path for [&str; N] {
+	type ComponentsIter<'a>
+		= iter::Copied<slice::Iter<'a, &'a str>>
 	where
 		Self: 'a;
 
@@ -167,7 +169,8 @@ impl<'b, const N: usize> Path for [&'b str; N] {
 }
 
 impl Path for str {
-	type ComponentsIter<'a> = core::str::Split<'a, char>
+	type ComponentsIter<'a>
+		= core::str::Split<'a, char>
 	where
 		Self: 'a;
 
@@ -202,7 +205,7 @@ pub struct MemReserveEntries<'dtb> {
 	blob: &'dtb [u64],
 }
 
-impl<'dtb> FallibleIterator for MemReserveEntries<'dtb> {
+impl FallibleIterator for MemReserveEntries<'_> {
 	type Item = MemReserveEntry;
 	type Error = Error;
 
@@ -257,7 +260,7 @@ impl Default for NodeContext<'_> {
 	}
 }
 
-impl<'a> NodeContext<'a> {
+impl NodeContext<'_> {
 	/// Helps you deserialize a node by creating the `NodeContext` for the child
 	/// nodes for you.
 	///
@@ -312,7 +315,7 @@ pub trait DeserializeProperty<'dtb>: Sized {
 
 impl<'dtb> DeserializeProperty<'dtb> for Property<'dtb> {
 	#[inline]
-	fn deserialize(blob_prop: Property<'dtb>, _cx: NodeContext<'_>) -> Result<Self> {
+	fn deserialize(blob_prop: Self, _cx: NodeContext<'_>) -> Result<Self> {
 		Ok(blob_prop)
 	}
 }
@@ -394,7 +397,7 @@ pub trait DeserializeNode<'dtb>: Sized {
 }
 
 impl<'dtb> DeserializeNode<'dtb> for Node<'dtb> {
-	fn deserialize(blob_node: &Node<'dtb>, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
+	fn deserialize(blob_node: &Self, _cx: NodeContext<'_>) -> Result<(Self, Cursor)> {
 		Ok((blob_node.clone(), blob_node.end_cursor()?))
 	}
 }
@@ -472,7 +475,7 @@ pub mod util {
 		if cells > 4 {
 			return None;
 		}
-		let idx = usize::checked_sub(value.len(), cells as usize)?;
+		let idx = value.len().checked_sub(cells as usize)?;
 		let mut ret: u128 = 0;
 		for &word in &value[idx..] {
 			ret = ret << 0x20 | u32::from_be(word) as u128;

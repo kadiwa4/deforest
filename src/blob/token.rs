@@ -145,7 +145,9 @@ impl Devicetree {
 					})
 				}
 				RawToken::EndNode => {
-					let depth = DtUint::checked_sub(cursor.depth, 1)
+					let depth = cursor
+						.depth
+						.checked_sub(1)
 						.ok_or(BlobError::UnexpectedEndNodeToken)?;
 					cursor.depth = depth;
 

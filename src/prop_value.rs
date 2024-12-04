@@ -152,7 +152,7 @@ impl<'a> FallibleIterator for Strings<'a> {
 	}
 }
 
-impl<'a> DoubleEndedFallibleIterator for Strings<'a> {
+impl DoubleEndedFallibleIterator for Strings<'_> {
 	fn next_back(&mut self) -> Result<Option<Self::Item>, Self::Error> {
 		let [value @ .., _] = self.value else {
 			return Ok(None);
@@ -493,7 +493,7 @@ impl RangesBlock {
 	/// ```
 	pub fn map_to_parent(self, child_address: u128) -> Result<Option<u128>> {
 		let Self(child_bus_address, parent_bus_address, size) = self;
-		match u128::checked_sub(child_address, child_bus_address) {
+		match child_address.checked_sub(child_bus_address) {
 			Some(offset) if offset < size => u128::checked_add(parent_bus_address, offset)
 				.map_or(Err(Error::IntOverflow), |a| Ok(Some(a))),
 			_ => Ok(None),
@@ -513,7 +513,7 @@ impl RangesBlock {
 	/// ```
 	pub fn map_to_child(self, parent_address: u128) -> Result<Option<u128>> {
 		let Self(child_bus_address, parent_bus_address, size) = self;
-		match u128::checked_sub(parent_address, parent_bus_address) {
+		match parent_address.checked_sub(parent_bus_address) {
 			Some(offset) if offset < size => u128::checked_add(child_bus_address, offset)
 				.map_or(Err(Error::IntOverflow), |a| Ok(Some(a))),
 			_ => Ok(None),

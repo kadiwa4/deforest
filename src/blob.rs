@@ -95,7 +95,7 @@ impl Devicetree {
 		}
 
 		// sometimes the dtb's length is not divisible by 8
-		let slice_len = (size + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN;
+		let slice_len = size.div_ceil(DTB_OPTIMAL_ALIGN);
 		// SAFETY: Self::totalsize ensures that size >= Header::SIZE
 		unsafe { Self::from_slice_internal(slice::from_raw_parts(ptr, slice_len)) }
 	}
@@ -141,7 +141,7 @@ impl Devicetree {
 	#[cfg(feature = "alloc")]
 	pub fn from_unaligned(blob: &[u8]) -> Result<Box<Self>> {
 		// sometimes the dtb's length is not divisible by 8
-		let capacity = (blob.len() + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN;
+		let capacity = blob.len().div_ceil(DTB_OPTIMAL_ALIGN);
 		let mut aligned_blob: Vec<u64> = Vec::with_capacity(capacity);
 		aligned_blob
 			.spare_capacity_mut()
@@ -186,7 +186,7 @@ impl Devicetree {
 		}
 
 		// sometimes the dtb's length is not divisible by 8
-		Ok((size + DTB_OPTIMAL_ALIGN - 1) / DTB_OPTIMAL_ALIGN)
+		Ok(size.div_ceil(DTB_OPTIMAL_ALIGN))
 	}
 
 	/// Verifies the magic header of a devicetree blob.
@@ -442,7 +442,7 @@ impl ToOwned for Devicetree {
 
 	fn to_owned(&self) -> Self::Owned {
 		// SAFETY: self is a valid DTB
-		unsafe { Devicetree::from_box_unchecked(self.blob.into()) }
+		unsafe { Self::from_box_unchecked(self.blob.into()) }
 	}
 }
 
@@ -477,7 +477,7 @@ impl<'dtb> Property<'dtb> {
 	}
 }
 
-impl<'dtb> Debug for Property<'dtb> {
+impl Debug for Property<'_> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Property")
 			.field("name", &self.name())
@@ -486,7 +486,7 @@ impl<'dtb> Debug for Property<'dtb> {
 	}
 }
 
-impl<'dtb> Display for Property<'dtb> {
+impl Display for Property<'_> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		struct HexArray<const N: usize>([u8; N]);
 
