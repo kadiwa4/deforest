@@ -494,7 +494,10 @@ impl Display for Property<'_> {
 				const HEX_STRING: &[u8] = b"0123456789abcdef";
 
 				let buf = self.0.map(|n| {
-					u16::from_ne_bytes([HEX_STRING[n as usize >> 4], HEX_STRING[n as usize & 0x0f]])
+					u16::from_ne_bytes([
+						HEX_STRING[usize::from(n) >> 4],
+						HEX_STRING[usize::from(n) & 0x0f],
+					])
 				});
 				// SAFETY: all characters are from HEX_STRING and are thus valid UTF-8
 				f.write_str(unsafe { core::str::from_utf8_unchecked(buf.as_bytes()) })
@@ -530,7 +533,7 @@ impl Display for Property<'_> {
 					if b == 0 {
 						f.write_str("\", \"")?;
 					} else {
-						f.write_char(b as char)?;
+						f.write_char(b.into())?;
 					};
 				}
 				f.write_char('"')?;

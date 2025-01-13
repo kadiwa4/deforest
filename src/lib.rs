@@ -460,9 +460,9 @@ pub mod util {
 			return None;
 		}
 		let mut ret: u128 = 0;
-		let (content, rest) = value.split_at_checked(cells as usize)?;
+		let (content, rest) = value.split_at_checked(cells.into())?;
 		for &word in content {
-			ret = ret << 0x20 | u32::from_be(word) as u128;
+			ret = ret << 0x20 | u128::from(u32::from_be(word));
 		}
 		*value = rest;
 		Some(ret)
@@ -472,10 +472,10 @@ pub mod util {
 		if cells > 4 {
 			return None;
 		}
-		let idx = value.len().checked_sub(cells as usize)?;
+		let idx = value.len().checked_sub(cells.into())?;
 		let mut ret: u128 = 0;
 		for &word in &value[idx..] {
-			ret = ret << 0x20 | u32::from_be(word) as u128;
+			ret = ret << 0x20 | u128::from(u32::from_be(word));
 		}
 		*value = &value[..idx];
 		Some(ret)

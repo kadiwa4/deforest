@@ -99,6 +99,7 @@ impl<'a> DevicetreeBuilder<'a> {
 				.copy_from_nonoverlapping(self.strings_blob.as_ptr(), self.strings_blob.len());
 			blob.set_len(capacity);
 
+			debug_assert_eq!(Devicetree::from_slice(&blob).err(), None);
 			Some(Devicetree::from_box_unchecked(blob.into_boxed_slice()))
 		}
 	}
